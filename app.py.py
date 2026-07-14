@@ -6,7 +6,7 @@ import re
 # Настройка страницы
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
-# --- КАСТОМНЫЙ АДАПТИВНЫЙ CSS СТИЛЬ (Apple Fonts + Gemini Search + Авто-тема: Фиолетовый/Оранжевый) ---
+# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + Шрифты Apple + Анимации + Gemini-поиск) ---
 st.markdown("""
     <style>
     /* Глобальный шрифт Apple для всех элементов интерфейса */
@@ -14,40 +14,103 @@ st.markdown("""
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
     }
 
-    /* Общие стили элементов */
+    /* Основной фон приложения и тексты */
+    .stApp {
+        background-color: #0d0e15;
+        color: #e2e8f0;
+    }
+    
+    /* Стилизация вкладок (Tabs) */
     button[data-baseweb="tab"] {
         font-size: 15px !important;
         font-weight: 500 !important;
         letter-spacing: -0.2px !important;
+        color: #a0aec0 !important;
         border-bottom: 2px solid transparent !important;
     }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #bc7af9 !important;
+        font-weight: 600 !important;
+        border-bottom: 2px solid #bc7af9 !important;
+    }
+    
+    /* Красивые закругленные карточки для метрик */
     div[data-testid="stMetric"] {
+        background-color: #161925;
+        border: 1px solid #2d3142;
         padding: 15px 20px;
         border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
         transition: transform 0.2s, border-color 0.2s;
     }
     div[data-testid="stMetric"]:hover {
         transform: translateY(-2px);
+        border-color: #bc7af9;
     }
+    
+    /* Подсветка цифр метрик (в стиле Apple) */
     div[data-testid="stMetricValue"] {
+        color: #bc7af9 !important;
         font-size: 26px !important;
         font-weight: 700 !important;
         letter-spacing: -0.5px !important;
     }
+    
+    /* Текст ярлыков метрик */
     div[data-testid="stMetricLabel"] {
+        color: #94a3b8 !important;
         font-size: 12px !important;
         font-weight: 500 !important;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+    
+    /* Кастомные контейнеры */
     div[class*="stElementContainer"] {
         border-radius: 8px;
     }
-    div[data-testid="stTextInput"] label {
-        display: none !important;
-    }
 
-    /* Базовые анимации */
+    /* === СТИЛИ ДЛЯ ЛЕТАЮЩЕГО НЕОНОВОГО ШАРИКА (ЗАГРУЗЧИК ИИ) === */
+    .loader-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 35px;
+        background-color: #161925;
+        border: 1px solid #2d3142;
+        border-radius: 16px;
+        margin: 20px 0;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    }
+    .loader-track {
+        width: 180px;
+        height: 6px;
+        background-color: #23273a;
+        border-radius: 10px;
+        position: relative;
+        margin-bottom: 20px;
+        overflow: visible;
+    }
+    .glowing-ball {
+        width: 18px;
+        height: 18px;
+        background: radial-gradient(circle, #d8b4fe 0%, #bc7af9 60%, #7b2cbf 100%);
+        border-radius: 50%;
+        position: absolute;
+        top: -6px;
+        left: 0;
+        box-shadow: 0 0 12px #bc7af9, 0 0 24px #bc7af9, 0 0 36px #7b2cbf;
+        animation: fly-back-forth 1.6s ease-in-out infinite alternate;
+    }
+    .loader-text {
+        color: #bc7af9;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        animation: pulse-text 1.6s ease-in-out infinite alternate;
+    }
     @keyframes fly-back-forth {
         0% { left: 0%; transform: translateX(0); }
         100% { left: 100%; transform: translateX(-18px); }
@@ -56,233 +119,94 @@ st.markdown("""
         0% { opacity: 0.4; transform: scale(0.98); }
         100% { opacity: 1; transform: scale(1); }
     }
-    @keyframes key-float {
-        0% { transform: translateY(0px) rotate(-10deg); }
-        100% { transform: translateY(-20px) rotate(10deg); }
-    }
 
-    /* Стили загрузчика и карточек */
-    .loader-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 35px;
-        border-radius: 16px;
-        margin: 20px 0;
-    }
-    .loader-track {
-        width: 180px;
-        height: 6px;
-        border-radius: 10px;
-        position: relative;
-        margin-bottom: 20px;
-    }
-    .glowing-ball {
-        width: 18px;
-        height: 18px;
-        border-radius: 50%;
-        position: absolute;
-        top: -6px;
-        left: 0;
-        animation: fly-back-forth 1.6s ease-in-out infinite alternate;
-    }
-    .loader-text {
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        animation: pulse-text 1.6s ease-in-out infinite alternate;
-    }
+    /* === СТИЛИ ДЛЯ ЭКРАНА ЛОГИНА === */
     .login-card {
+        background-color: #161925;
+        border: 1px solid #2d3142;
+        padding: 45px 35px;
         border-radius: 24px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.6), 0 0 30px rgba(188, 122, 249, 0.15);
         text-align: center;
         margin-top: 10vh;
-        padding: 45px 35px;
     }
+    
+    /* Летающий неоновый ключ */
     .floating-key {
         font-size: 64px;
         display: inline-block;
         margin-bottom: 15px;
         animation: key-float 3s ease-in-out infinite alternate;
+        filter: drop-shadow(0 0 15px #bc7af9);
+    }
+    @keyframes key-float {
+        0% { transform: translateY(0px) rotate(-10deg); }
+        100% { transform: translateY(-20px) rotate(10deg); }
     }
     
-    /* Адаптивные кастомные классы для текстов */
-    .main-title { font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0px; }
-    .main-subtitle { margin-top: 5px; font-size: 15px; }
-    .section-title { font-weight: 600; margin-top: 20px; margin-bottom: 15px; }
-    .ai-response-box { padding: 20px; border-radius: 12px; margin-top: 15px; }
-
-    /* ======================================================== */
-    /* 🟠 СВЕТЛАЯ ТЕМА (Включается если в системе/браузере светлая тема) */
-    /* ======================================================== */
-    @media (prefers-color-scheme: light) {
-        .stApp {
-            background-color: #f8fafc;
-            color: #0f172a;
-        }
-        .main-title { color: #0f172a !important; }
-        .main-subtitle { color: #64748b !important; }
-        .section-title { color: #0f172a !important; }
-        
-        /* Вкладки */
-        button[data-baseweb="tab"] { color: #64748b !important; }
-        button[data-baseweb="tab"][aria-selected="true"] {
-            color: #f97316 !important;
-            font-weight: 600 !important;
-            border-bottom: 2px solid #f97316 !important;
-        }
-        
-        /* Метрики */
-        div[data-testid="stMetric"] {
-            background-color: #ffffff;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.04);
-        }
-        div[data-testid="stMetric"]:hover { border-color: #f97316; }
-        div[data-testid="stMetricValue"] { color: #f97316 !important; }
-        div[data-testid="stMetricLabel"] { color: #64748b !important; }
-        
-        /* Загрузчик */
-        .loader-container {
-            background-color: #ffffff;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.04);
-        }
-        .loader-track { background-color: #e2e8f0; }
-        .glowing-ball {
-            background: radial-gradient(circle, #ffedd5 0%, #f97316 60%, #ea580c 100%);
-            box-shadow: 0 0 12px rgba(249, 115, 22, 0.6);
-        }
-        .loader-text { color: #f97316; }
-        
-        /* Экран логина */
-        .login-card {
-            background-color: #ffffff;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.05), 0 0 30px rgba(249, 115, 22, 0.08);
-        }
-        .floating-key { filter: drop-shadow(0 0 15px #f97316); }
-        .login-title {
-            background: linear-gradient(45deg, #0f172a, #f97316);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .login-subtitle { color: #64748b !important; }
-        
-        /* Ввод пароля */
-        div[data-testid="stTextInput"] input[type="password"] {
-            background-color: #f1f5f9 !important;
-            border: 2px solid #e2e8f0 !important;
-            color: #0f172a !important;
-        }
-        div[data-testid="stTextInput"] input[type="password"]:focus {
-            border-color: #f97316 !important;
-            box-shadow: 0 0 15px rgba(249, 115, 22, 0.2) !important;
-        }
-        
-        /* Поиск Gemini */
-        div[data-testid="stTextInput"] input[type="text"] {
-            background-color: #ffffff !important;
-            border: 1px solid #e2e8f0 !important;
-            color: #0f172a !important;
-            border-radius: 28px !important;
-            padding: 15px 24px !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
-        }
-        div[data-testid="stTextInput"] input[type="text"]:focus {
-            border-color: #f97316 !important;
-            background-color: #ffffff !important;
-            box-shadow: 0 0 20px rgba(249, 115, 22, 0.15), 0 4px 15px rgba(0, 0, 0, 0.04) !important;
-        }
-        div[data-testid="stTextInput"] input[type="text"]::placeholder { color: #94a3b8 !important; }
-        .ai-response-box { background-color: #ffffff; border: 1px solid #f97316; color: #0f172a; }
+    .login-title {
+        color: #ffffff !important;
+        font-size: 32px !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.5px !important;
+        margin-bottom: 5px !important;
+        background: linear-gradient(45deg, #ffffff, #bc7af9);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
-
-    /* ======================================================== */
-    /* 🟣 ТЕМНАЯ ТЕМА (Включается если в системе/браузере темная тема) */
-    /* ======================================================== */
-    @media (prefers-color-scheme: dark) {
-        .stApp {
-            background-color: #0d0e15;
-            color: #e2e8f0;
-        }
-        .main-title { color: #ffffff !important; }
-        .main-subtitle { color: #94a3b8 !important; }
-        .section-title { color: #ffffff !important; }
-        
-        /* Вкладки */
-        button[data-baseweb="tab"] { color: #a0aec0 !important; }
-        button[data-baseweb="tab"][aria-selected="true"] {
-            color: #bc7af9 !important;
-            font-weight: 600 !important;
-            border-bottom: 2px solid #bc7af9 !important;
-        }
-        
-        /* Метрики */
-        div[data-testid="stMetric"] {
-            background-color: #161925;
-            border: 1px solid #2d3142;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-        }
-        div[data-testid="stMetric"]:hover { border-color: #bc7af9; }
-        div[data-testid="stMetricValue"] { color: #bc7af9 !important; }
-        div[data-testid="stMetricLabel"] { color: #94a3b8 !important; }
-        
-        /* Загрузчик */
-        .loader-container {
-            background-color: #161925;
-            border: 1px solid #2d3142;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
-        }
-        .loader-track { background-color: #23273a; }
-        .glowing-ball {
-            background: radial-gradient(circle, #d8b4fe 0%, #bc7af9 60%, #7b2cbf 100%);
-            box-shadow: 0 0 12px #bc7af9, 0 0 24px #bc7af9, 0 0 36px #7b2cbf;
-        }
-        .loader-text { color: #bc7af9; }
-        
-        /* Экран логина */
-        .login-card {
-            background-color: #161925;
-            border: 1px solid #2d3142;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.6), 0 0 30px rgba(188, 122, 249, 0.15);
-        }
-        .floating-key { filter: drop-shadow(0 0 15px #bc7af9); }
-        .login-title {
-            background: linear-gradient(45deg, #ffffff, #bc7af9);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .login-subtitle { color: #94a3b8 !important; }
-        
-        /* Ввод пароля */
-        div[data-testid="stTextInput"] input[type="password"] {
-            background-color: #0d0e15 !important;
-            border: 2px solid #2d3142 !important;
-            color: #ffffff !important;
-        }
-        div[data-testid="stTextInput"] input[type="password"]:focus {
-            border-color: #bc7af9 !important;
-            box-shadow: 0 0 15px rgba(188, 122, 249, 0.35) !important;
-        }
-        
-        /* Поиск Gemini */
-        div[data-testid="stTextInput"] input[type="text"] {
-            background-color: #161925 !important;
-            border: 1px solid #2d3142 !important;
-            color: #ffffff !important;
-            border-radius: 28px !important;
-            padding: 15px 24px !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-        }
-        div[data-testid="stTextInput"] input[type="text"]:focus {
-            border-color: #bc7af9 !important;
-            background-color: #1b1e2c !important;
-            box-shadow: 0 0 20px rgba(188, 122, 249, 0.25), 0 4px 15px rgba(0, 0, 0, 0.3) !important;
-        }
-        div[data-testid="stTextInput"] input[type="text"]::placeholder { color: #64748b !important; }
-        .ai-response-box { background-color: #161925; border: 1px solid #bc7af9; color: #ffffff; }
+    .login-subtitle {
+        color: #94a3b8 !important;
+        font-size: 14px !important;
+        font-weight: 400 !important;
+        margin-bottom: 30px !important;
+    }
+    
+    /* Скрываем стандартные надписи Streamlit над текстовыми инпутами */
+    div[data-testid="stTextInput"] label {
+        display: none !important;
+    }
+    
+    /* 1. Красивая строчка ввода ПАРОЛЯ */
+    div[data-testid="stTextInput"] input[type="password"] {
+        background-color: #0d0e15 !important;
+        border: 2px solid #2d3142 !important;
+        color: #ffffff !important;
+        text-align: center !important;
+        font-size: 20px !important;
+        font-weight: 600 !important;
+        border-radius: 12px !important;
+        padding: 14px !important;
+        letter-spacing: 6px !important;
+        transition: all 0.25s ease-in-out !important;
+    }
+    div[data-testid="stTextInput"] input[type="password"]:focus {
+        border-color: #bc7af9 !important;
+        box-shadow: 0 0 15px rgba(188, 122, 249, 0.35) !important;
+    }
+    
+    /* 2. СТРОКА ПОИСКА В СТИЛЕ GOOGLE GEMINI */
+    div[data-testid="stTextInput"] input[type="text"] {
+        background-color: #161925 !important;
+        border: 1px solid #2d3142 !important;
+        color: #ffffff !important;
+        text-align: left !important;
+        font-size: 16px !important;
+        font-weight: 400 !important;
+        border-radius: 28px !important; /* Форма капсулы как у Gemini */
+        padding: 15px 24px !important; /* Большие просторные отступы */
+        letter-spacing: normal !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    div[data-testid="stTextInput"] input[type="text"]:focus {
+        border-color: #bc7af9 !important;
+        background-color: #1b1e2c !important;
+        box-shadow: 0 0 20px rgba(188, 122, 249, 0.25), 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+    }
+    /* Кастомизация цвета плейсхолдера */
+    div[data-testid="stTextInput"] input[type="text"]::placeholder {
+        color: #64748b !important;
+        opacity: 1;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -323,8 +247,8 @@ if not st.session_state.password_correct:
     st.stop()
 
 # --- ГЛАВНЫЙ ЭКРАН ПРИЛОЖЕНИЯ ---
-st.markdown("<h1 class="main-title">📊 ИИ-Аналитик WB <span style='font-size: 18px; font-weight: 500; opacity: 0.8;'>PRO Edition</span></h1>", unsafe_allow_html=True)
-st.markdown("<p class="main-subtitle">Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='color: #ffffff; margin-bottom: 0px; font-weight: 700; letter-spacing: -0.5px;'>📊 ИИ-Аналитик WB <span style='color: #bc7af9; font-size: 18px; font-weight: 500; letter-spacing: 0px;'>PRO Edition</span></h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #94a3b8; margin-top: 5px; font-size: 15px;'>Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
 
 file = st.sidebar.file_uploader("📂 Загрузите отчет (.xlsx)", type=["xlsx"])
 
@@ -402,10 +326,10 @@ if file:
 
     # ==================== ВКЛАДКА 1 ====================
     with tab_fin:
-        st.markdown("<h3 class="section-title">📈 Главные метрики</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>📈 Главные метрики</h3>", unsafe_allow_html=True)
         main_metrics = []
         if rev_col: main_metrics.append(("Выручка", f"{total_revenue:,.0f} ₽"))
-        main_metrics.append(("Чистая прибыль", f"{net_profit:,.0f} ₽"))
+        main_metrics.append(("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽"))
         if orders_val > 0: main_metrics.append(("Заказов", f"{int(orders_val)} шт"))
         if returns_cnt_val > 0: main_metrics.append(("Возвраты", f"{int(returns_cnt_val)} шт"))
         if returns_sum_val > 0: main_metrics.append(("Сумма возвратов", f"{returns_sum_val:,.0f} ₽"))
@@ -416,7 +340,7 @@ if file:
                 cols_main[idx].metric(label, val)
 
         if discovered_expenses:
-            st.markdown("<h3 class="section-title">💸 Расшифровка расходов</h3>", unsafe_allow_html=True)
+            st.markdown("<br><h3 style='color: #ffffff; font-weight: 600;'>💸 Расшифровка расходов</h3>", unsafe_allow_html=True)
             expense_labels = {
                 'logistics': 'Логистика', 'commission': 'Комиссия', 'cost': 'Себестоимость',
                 'promo': 'Реклама', 'storage': 'Хранение', 'acceptance': 'Приемка', 'fines': 'Штрафы'
@@ -435,7 +359,7 @@ if file:
         date_col = found_cols['date']
 
         if rev_col and (name_col or date_col):
-            st.markdown("<h3 class="section-title">🎯 Эффективность продаж</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>🎯 Эффективность продаж</h3>", unsafe_allow_html=True)
             col_left, col_right = st.columns(2)
 
             if name_col:
@@ -473,10 +397,11 @@ if file:
         else:
             st.info("В файле отсутствуют колонки даты или названия товара для глубокой аналитики.")
 
-    # ==================== ВКЛАДКА 3 ====================
+    # ==================== ВКЛАДКА 3 (ИИ И GEMINI-ПОИСК) ====================
     with tab_ai:
-        st.markdown("<h3 class="section-title">🤖 Спросите ИИ-агента</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #ffffff; font-weight: 600; margin-bottom: 15px;'>🤖 Спросите ИИ-агента</h3>", unsafe_allow_html=True)
         
+        # Строка поиска теперь выглядит как в Google Gemini
         query = st.text_input("Задайте вопрос ИИ-агенту:", placeholder="Введите ваш запрос к отчету (например: Сколько принесла куртка?)...")
         
         if query:
@@ -556,10 +481,10 @@ if file:
             
             loader_placeholder.empty()
             if resp_text:
-                st.markdown("<div class="ai-response-box">", unsafe_allow_html=True)
+                st.markdown("<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #bc7af9;'>", unsafe_allow_html=True)
                 st.write(resp_text)
                 st.markdown("</div>", unsafe_allow_html=True)
             elif fallback_text:
-                st.markdown(f"<div class="ai-response-box" style='border-color: #eab308;'>{fallback_text}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #eab308;'>{fallback_text}</div>", unsafe_allow_html=True)
 else:
     st.info("👈 Пожалуйста, загрузите ваш Excel-отчет Wildberries в боковое меню слева, чтобы начать анализ.")
