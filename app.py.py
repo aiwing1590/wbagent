@@ -4,7 +4,6 @@ import google.generativeai as genai
 
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
-# Инициализация ИИ
 def get_model():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -15,7 +14,6 @@ def get_model():
 
 model = get_model()
 
-# Вход
 if 'password_correct' not in st.session_state: st.session_state.password_correct = False
 if not st.session_state.password_correct:
     st.header("🔐 Вход")
@@ -30,65 +28,56 @@ file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
 if file:
     df = pd.read_excel(file)
     
-    # Расходы
-    expenses_cols = ['Комиссия', 'Эквайринг', 'Логистика', 'Хранение', 'Платная приемка', 'Продвижение', 'Штрафы', 'Себестоимость']
+    # ФУНКЦИЯ ПОИСКА КОЛОНОК (подстраивается под любую таблицу)
+    def find_col(possible_names):
+        for name in possible_names:
+            for col in df.columns:
+                if name.lower() in col.lower():
+                    return col
+        return None
+
+    # Ищем колонки с учетом разных названий
+    rev_col = find_col(['выручка', 'сумма реализации', 'сумма заказов'])
+    log_col = find_col(['логистика'])
+    com_col = find_col(['комиссия'])
+    cost_col = find_col(['себестоимость'])
+    ret_col = find_col(['возврат'])
+    name_col = find_col(['наименование'])
+    date_col = find_col(['дата продажи', 'дата заказа'])
     
-    # Расчет всех сумм с безопасным заполнением пустых значений
-    rev = df['Сумма заказов (из ленты в API)'].fillna(0).sum()
-    sums = {col: df[col].fillna(0).abs().sum() if col in df.columns else 0 for col in expenses_cols}
-    ret_count = df['Возвраты'].fillna(0).sum() if 'Возвраты' in df.columns else 0
-    ret_sum = df['Сумма возвратов'].fillna(0).sum() if 'Сумма возвратов' in df.columns else 0
+    # Расчет данных
+    rev = df[rev_col].fillna(0).sum() if rev_col else 0
+    log = df[log_col].fillna(0).abs().sum() if log_col else 0
+    com = df[com_col].fillna(0).abs().sum() if com_col else 0
+    cost = df[cost_col].fillna(0).abs().sum() if cost_col else 0
     
-    # Чистая прибыль = Выручка минус все расходы
-    net_profit = rev - sum(sums.values())
+    # Прибыль
+    net_profit = rev - log - com - cost
     
-    # 1. МЕТРИКИ (ДВЕ СТРОКИ)
+    # Метрики
     st.subheader("💰 Финансовые показатели")
-    
-    # Первая строка
     cols1 = st.columns(4)
     cols1[0].metric("Выручка", f"{rev:,.0f} ₽")
     cols1[1].metric("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽")
-    cols1[2].metric("Возвраты (кол-во)", f"{int(ret_count)}")
-    cols1[3].metric("Сумма возвратов", f"{ret_sum:,.0f} ₽")
+    cols1[2].metric("Логистика", f"{log:,.0f} ₽")
+    cols1[3].metric("Себестоимость", f"{cost:,.0f} ₽")
     
-    # Вторая строка (все расходы)
-    cols2 = st.columns(4)
-    cols2[0].metric("Логистика", f"{sums['Логистика']:,.0f} ₽")
-    cols2[1].metric("Эквайринг", f"{sums['Эквайринг']:,.0f} ₽")
-    cols2[2].metric("Продвижение", f"{sums['Продвижение']:,.0f} ₽")
-    cols2[3].metric("Комиссия", f"{sums['Комиссия']:,.0f} ₽")
-    
-    # 2. АНАЛИЗ ТОВАРОВ
-    df['Чистая'] = df['Сумма заказов (из ленты в API)'].fillna(0)
-    for col in expenses_cols:
-        if col in df.columns:
-            df['Чистая'] = df['Чистая'] - df[col].fillna(0).abs()
-            
+    # Анализ товаров
     st.subheader("📦 Анализ эффективности")
+    if name_col:
+        # Группируем по товару
+        best = df.groupby(name_col)[rev_col].sum().idxmax()
+        worst = df.groupby(name_col)[rev_col].sum().idxmin()
+        
+        col_a, col_b = st.columns(2)
+        col_a.metric("Лучший товар", str(best)[:20])
+        col_b.metric("Худший товар", str(worst)[:20])
     
-    best = df.loc[df['Чистая'].idxmax()]
-    worst = df.loc[df['Чистая'].idxmin()]
-    
-    best_name = str(best.get('Наименование', 'Товар'))[:20]
-    best_sales = int(best.get('Заказы (из ленты в API)', 0))
-    
-    worst_name = str(worst.get('Наименование', 'Товар'))[:20]
-    worst_sales = int(worst.get('Заказы (из ленты в API)', 0))
-    
-    col_a, col_b = st.columns(2)
-    col_a.metric(f"Лучший: {best_name}", f"Продаж: {best_sales}")
-    col_b.metric("Лучший день", str(best.get('Дата', '—')))
-    
-    col_c, col_d = st.columns(2)
-    col_c.metric(f"Худший: {worst_name}", f"Продаж: {worst_sales}")
-    col_d.metric("Худший день", str(worst.get('Дата', '—')))
-
     # ИИ
     st.markdown("---")
     if model:
         query = st.text_input("🤖 Спросить ИИ-агента:")
         if query:
             with st.spinner("Анализирую..."):
-                resp = model.generate_content(f"Вопрос: {query}. Прибыль: {net_profit}")
+                resp = model.generate_content(f"Вопрос: {query}. Выручка: {rev}, Прибыль: {net_profit}")
                 st.write(resp.text)
