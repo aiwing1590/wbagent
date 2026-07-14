@@ -1,4 +1,4 @@
 streamlit
 pandas
 openpyxl
-g4f
+duckduckgo-search
