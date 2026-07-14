@@ -30,21 +30,20 @@ file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
 if file:
     df = pd.read_excel(file)
     
-    # Считаем всё по точным названиям из файла
-    orders = df['Заказы (из ленты в API)'].sum()
-    revenue = df['Сумма заказов (из ленты в API)'].sum()
+    # Расчеты по колонкам
+    rev = df['Сумма заказов (из ленты в API)'].sum()
     promo = df['Продвижение'].sum()
     acquiring = df['Эквайринг'].sum()
     logistics = df['Логистика'].sum()
     penalties = df['Штрафы'].sum()
     commission = df['Комиссия'].sum()
     
-    # Чистая прибыль = Выручка - все расходы
-    net_profit = revenue - (promo + abs(acquiring) + abs(logistics) + abs(penalties) + abs(commission))
+    # Чистая прибыль = Выручка - расходы
+    net_profit = rev - (promo + abs(acquiring) + abs(logistics) + abs(penalties) + abs(commission))
     
     # Метрики
     cols = st.columns(4)
-    cols[0].metric("Выручка", f"{revenue:,.0f} ₽")
+    cols[0].metric("Выручка", f"{rev:,.0f} ₽")
     cols[1].metric("Прибыль", f"{net_profit:,.0f} ₽")
     cols[2].metric("Логистика", f"{abs(logistics):,.0f} ₽")
     cols[3].metric("Продвижение", f"{abs(promo):,.0f} ₽")
@@ -54,13 +53,27 @@ if file:
     cols2[1].metric("Штрафы", f"{abs(penalties):,.0f} ₽")
     cols2[2].metric("Комиссия", f"{abs(commission):,.0f} ₽")
 
+    # Лучший/Худший день (по каждой записи)
+    df['Чистая'] = df['Сумма заказов (из ленты в API)'] - (df['Продвижение'] + abs(df['Эквайринг']) + abs(df['Логистика']) + abs(df['Штрафы']) + abs(df['Комиссия']))
+    df['День'] = range(1, len(df) + 1)
+    
+    st.markdown("### 📈 Анализ эффективности")
+    col_a, col_b = st.columns(2)
+    
+    best = df.loc[df['Чистая'].idxmax()]
+    worst = df.loc[df['Чистая'].idxmin()]
+    
+    col_a.metric("Лучший день (запись №)", f"{int(best['День'])}", f"{best['Чистая']:,.0f} ₽")
+    col_b.metric("Худший день (запись №)", f"{int(worst['День'])}", f"{worst['Чистая']:,.0f} ₽")
+
     # ИИ
+    st.markdown("---")
     if model:
         query = st.text_input("🤖 Спросить ИИ:")
         if query:
             with st.spinner("Анализирую..."):
-                stats = f"Выручка: {revenue}, Расходы: Продвижение {promo}, Эквайринг {acquiring}, Логистика {logistics}, Штрафы {penalties}, Комиссия {commission}"
+                stats = f"Выручка: {rev}, Прибыль: {net_profit}, Расходы: Продвижение {promo}, Эквайринг {acquiring}, Логистика {logistics}"
                 resp = model.generate_content(f"Вопрос: {query}. Данные: {stats}")
                 st.write(resp.text)
     else:
-        st.error("Ошибка ИИ: Проверьте API-ключ в Settings -> Secrets.")
+        st.error("Ошибка ИИ: Проверьте API-ключ в Secrets.")
