@@ -1,10 +1,19 @@
+import subprocess
+import sys
+
+# Принудительная установка библиотеки, если её нет
+try:
+    import google.generativeai
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "google-generativeai"])
+
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 
 st.set_page_config(page_title="WB AI Agent Analyzer", layout="wide")
 
-# Берем ключ из защищенного раздела Secrets в Streamlit
+# Инициализация ИИ
 try:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=GOOGLE_API_KEY)
@@ -49,4 +58,4 @@ if uploaded_file:
                 resp = model.generate_content(prompt)
                 st.write(resp.text)
     else:
-        st.warning("ИИ временно недоступен (не настроен ключ API).")
+        st.warning("ИИ временно недоступен.")
