@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
@@ -24,52 +25,71 @@ if not st.session_state.password_correct:
         st.rerun()
     st.stop()
 
-st.title("📊 ИИ-Аналитик WB")
+st.title("📊 ИИ-Аналитик WB (PRO)")
 file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
 
 if file:
     df = pd.read_excel(file)
     
-    # 1. Расчеты для метрик
-    rev = df['Сумма заказов (из ленты в API)'].sum()
-    promo = df['Продвижение'].sum()
-    acquiring = df['Эквайринг'].sum()
-    logistics = df['Логистика'].sum()
-    penalties = df['Штрафы'].sum()
-    commission = df['Комиссия'].sum()
+    # 1. Расходы и расчеты
+    expenses_cols = [
+        'Комиссия', 'Эквайринг', 'Логистика', 'Хранение', 
+        'Платная приемка', 'Продвижение', 'Штрафы', 'Себестоимость'
+    ]
+    spp_col = 'Скидка WB (СПП)'
     
-    # Чистая прибыль
-    net_profit = rev - (promo + abs(acquiring) + abs(logistics) + abs(penalties) + abs(commission))
+    rev = df['Сумма заказов (из ленты в API)'].sum() if 'Сумма заказов (из ленты в API)' in df.columns else 0
+    spp_val = df[spp_col].sum() if spp_col in df.columns else 0
     
-    # 2. Вывод ВСЕХ метрик
+    sums = {}
+    for col in expenses_cols:
+        sums[col] = df[col].fillna(0).abs().sum() if col in df.columns else 0
+            
+    # Чистая прибыль = Выручка + СПП - Расходы
+    net_profit = rev + spp_val - sum(sums.values())
+    
+    # 2. Метрики (ЖЕЛЕЗОБЕТОННЫЕ)
     st.subheader("💰 Финансовые показатели")
     cols1 = st.columns(4)
     cols1[0].metric("Выручка", f"{rev:,.0f} ₽")
-    cols1[1].metric("Прибыль", f"{net_profit:,.0f} ₽")
-    cols1[2].metric("Логистика", f"{abs(logistics):,.0f} ₽")
-    cols1[3].metric("Продвижение", f"{abs(promo):,.0f} ₽")
+    cols1[1].metric("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽")
+    cols1[2].metric("СПП (Скидка WB)", f"{spp_val:,.0f} ₽")
+    cols1[3].metric("Себестоимость", f"{sums['Себестоимость']:,.0f} ₽")
     
-    cols2 = st.columns(3)
-    cols2[0].metric("Эквайринг", f"{abs(acquiring):,.0f} ₽")
-    cols2[1].metric("Штрафы", f"{abs(penalties):,.0f} ₽")
-    cols2[2].metric("Комиссия", f"{abs(commission):,.0f} ₽")
+    cols2 = st.columns(4)
+    cols2[0].metric("Логистика", f"{sums['Логистика']:,.0f} ₽")
+    cols2[1].metric("Продвижение", f"{sums['Продвижение']:,.0f} ₽")
+    cols2[2].metric("Эквайринг", f"{sums['Эквайринг']:,.0f} ₽")
+    cols2[3].metric("Комиссия", f"{sums['Комиссия']:,.0f} ₽")
 
-    # 3. Анализ товаров
-    df['Чистая'] = df['Сумма заказов (из ленты в API)'] - (df['Продвижение'].abs() + df['Эквайринг'].abs() + df['Логистика'].abs() + df['Штрафы'].abs() + df['Комиссия'].abs())
-    
+    # 3. Анализ товаров и График
+    df['Чистая'] = df['Сумма заказов (из ленты в API)'].fillna(0) + df[spp_col].fillna(0)
+    for col in expenses_cols:
+        if col in df.columns:
+            df['Чистая'] = df['Чистая'] - df[col].fillna(0).abs()
+            
     st.subheader("📦 Анализ товаров")
     col_a, col_b = st.columns(2)
+    
     best = df.loc[df['Чистая'].idxmax()]
     worst = df.loc[df['Чистая'].idxmin()]
     
-    col_a.metric("Лучший товар", best['Наименование'][:20] + "...", f"{best['Чистая']:,.0f} ₽")
-    col_b.metric("Худший товар", worst['Наименование'][:20] + "...", f"{worst['Чистая']:,.0f} ₽")
+    col_a.metric("Лучший товар", str(best['Наименование'])[:20]+"...", f"{best['Чистая']:,.0f} ₽")
+    col_b.metric("Худший товар", str(worst['Наименование'])[:20]+"...", f"{worst['Чистая']:,.0f} ₽")
+    
+    # ГРАФИК
+    st.markdown("### 📊 Распределение прибыльности товаров")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    df_sorted = df.sort_values('Чистая', ascending=False).head(15) # Топ 15 товаров
+    ax.bar(df_sorted['Наименование'].apply(lambda x: x[:10]+"..."), df_sorted['Чистая'], color='skyblue')
+    plt.xticks(rotation=45, ha='right')
+    st.pyplot(fig)
 
-    # ИИ
+    # 4. ИИ
     st.markdown("---")
     if model:
-        query = st.text_input("🤖 Спросить ИИ:")
+        query = st.text_input("🤖 Спросить ИИ-агента:")
         if query:
             with st.spinner("Анализирую..."):
-                resp = model.generate_content(f"Вопрос: {query}. Прибыль: {net_profit}, Лучший: {best['Наименование']}, Худший: {worst['Наименование']}")
+                resp = model.generate_content(f"Вопрос: {query}. Прибыль: {net_profit}, СПП: {spp_val}, Лучший: {best['Наименование']}")
                 st.write(resp.text)
