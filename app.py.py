@@ -257,7 +257,7 @@ def get_model():
 
 model_configured = get_model()
 
-# --- АВТОРИЗАЦИЯ ПО ЦЕНТРУ ---
+# --- АВТОРИЗАЦИЯ С ЗАЩИТОЙ ЧЕРЕЗ SECRETS ---
 if 'password_correct' not in st.session_state: 
     st.session_state.password_correct = False
 
@@ -274,7 +274,10 @@ if not st.session_state.password_correct:
         
         password = st.text_input("Пароль доступа", type="password", placeholder="••••••")
         
-        if password == "wb140":
+        # Получаем секретный пароль из настроек Streamlit Secrets. Если его нет, по умолчанию будет "wb140"
+        correct_password = st.secrets.get("APP_PASSWORD", "wb140")
+        
+        if password == correct_password:
             st.session_state.password_correct = True
             st.rerun()
         elif password:
