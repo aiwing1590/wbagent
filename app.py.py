@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
+import re
 
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
@@ -33,18 +34,18 @@ if file:
 
     # СЛОВАРЬ СИНОНИМОВ (Умный поиск колонок по ключевым словам)
     keywords_map = {
-        'revenue': ['выручка', 'сумма реализации', 'сумма заказов', 'к оплате', 'цена продажи'],
-        'logistics': ['логистика', 'доставка'],
-        'commission': ['комиссия', 'эквайринг'],
+        'revenue': ['выручка', 'сумма реализации', 'сумма заказов', 'к оплате', 'цена продажи', 'вайлдберриз к оплате', 'переданный товар', 'сумма'],
+        'logistics': ['логистика', 'доставка', 'услуги по доставке'],
+        'commission': ['комиссия', 'эквайринг', 'вознаграждение'],
         'cost': ['себестоимость'],
         'promo': ['продвижение', 'реклама', 'кампания'],
         'storage': ['хранение'],
-        'acceptance': ['приемка'],
+        'acceptance': ['приемка', 'платная приемка'],
         'fines': ['штрафы', 'штраф'],
         'returns_cnt': ['возвраты', 'кол-во возвратов'],
         'returns_sum': ['сумма возвратов'],
         'orders_cnt': ['заказы', 'кол-во заказов', 'количество заказов'],
-        'product_name': ['наименование', 'товар', 'название товара', 'артикул'],
+        'product_name': ['наименование', 'товар', 'название товара', 'артикул', 'предмет', 'номенклатура', 'бренд', 'обоснование для оплаты'],
         'date': ['дата', 'день']
     }
 
@@ -54,9 +55,7 @@ if file:
         possible_synonyms = keywords_map[key]
         for col in df.columns:
             col_lower = str(col).lower()
-            # Проверяем вхождение ключевого слова
             if any(syn in col_lower for syn in possible_synonyms):
-                # Проверяем, нет ли слов-исключений (например, чтобы дата не попала в заказы)
                 if not any(ex in col_lower for ex in exclude_words):
                     return col
         return None
@@ -81,7 +80,6 @@ if file:
     for k in expense_keys:
         col_name = found_cols[k]
         if col_name:
-            # Считаем сумму расхода, переводя отрицательные значения в положительные для наглядности
             discovered_expenses[k] = df[col_name].fillna(0).abs().sum()
 
     # Чистая прибыль = Выручка минус сумма всех найденных в файле расходов
@@ -93,7 +91,6 @@ if file:
     ret_sum_col = found_cols['returns_sum']
     ord_cnt_col = found_cols['orders_cnt']
 
-    # Проверка типов данных для штук заказов, чтобы не упасть на датах
     orders_val = 0
     if ord_cnt_col and pd.api.types.is_numeric_dtype(df[ord_cnt_col]):
         orders_val = df[ord_cnt_col].fillna(0).sum()
@@ -104,7 +101,6 @@ if file:
     # --- ВЫВОД ФИНАНСОВЫХ МЕТРИК ---
     st.subheader("💰 Финансовые показатели")
     
-    # Собираем карточки для первой строки (Базовые метрики)
     main_metrics = []
     if rev_col: main_metrics.append(("Выручка", f"{total_revenue:,.0f} ₽"))
     main_metrics.append(("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽"))
@@ -117,7 +113,6 @@ if file:
         for idx, (label, val) in enumerate(main_metrics):
             cols_main[idx].metric(label, val)
 
-    # Строка расходов (выводятся ТОЛЬКО те, которые реально найдены в таблице)
     if discovered_expenses:
         st.markdown("##### Расшифровка расходов из файла:")
         expense_labels = {
@@ -145,7 +140,6 @@ if file:
 
         col_left, col_right = st.columns(2)
 
-        # Анализ по товарам (если колонка найдена)
         if name_col:
             product_grouped = df.groupby(name_col)['Row_Net'].sum()
             best_prod = product_grouped.idxmax()
@@ -155,9 +149,7 @@ if file:
                 st.metric(f"📈 Лучший товар ({str(best_prod)[:20]}...)", f"{product_grouped[best_prod]:,.0f} ₽")
                 st.metric(f"📉 Худший товар ({str(worst_prod)[:20]}...)", f"{product_grouped[worst_prod]:,.0f} ₽")
 
-        # Анализ по дням (если колонка найдена)
         if date_col:
-            # Переводим в дату без времени для красивой группировки
             df['Clean_Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.strftime('%Y-%m-%d')
             date_grouped = df.groupby('Clean_Date')['Row_Net'].sum()
             
@@ -180,16 +172,12 @@ if file:
                 for k, v in discovered_expenses.items():
                     ai_context += f"Расход {k}={v}. "
                 
-                # Добавляем список реальных колонок файла, чтобы ИИ знал структуру
                 ai_context += f"Доступные колонки в загруженном файле: {list(df.columns)}. "
                 
-                # Только актуальные и активные модели (без устаревшего хлама)
                 models_to_try = ['gemini-2.0-flash', 'gemini-2.5-pro']
-                
                 resp_text = None
                 errors_log = []
                 
-                # Инструкция строгого формата ответа
                 prompt = (
                     f"Ты профессиональный ИИ-аналитик маркетплейса WB. Ответь на вопрос пользователя КРАТКО, СТРОГО ПО ДЕЛУ и только на русском языке.\n"
                     f"Выведи только чистый, финальный ответ для человека. НЕ используй никаких шаблонов, заголовков вроде 'User Question:', 'Direct Answer:', 'Reasoning:' или технических тегов.\n\n"
@@ -211,34 +199,65 @@ if file:
                 if resp_text:
                     st.write(resp_text)
                 else:
-                    # --- ПЫТАЕМСЯ ОТВЕТИТЬ ЛОКАЛЬНО ПРИ ОШИБКЕ API ---
-                    import re
+                    # --- УМНЫЙ ЛОКАЛЬНЫЙ ПОИСК (ФОЛБЕК ПРИ ОТСУТСТВИИ СВЯЗИ С ИИ) ---
                     fallback_text = None
                     q = query.lower().strip()
                     
-                    # 1. Поиск по конкретным товарам (например, "рукомойники")
-                    name_col = found_cols.get('product_name')
-                    rev_col = found_cols.get('revenue')
-                    if name_col and rev_col:
-                        # Стоп-слова, которые убираем из запроса, чтобы вычленить название товара
+                    # Собираем все колонки, в которых может лежать текст
+                    search_cols = []
+                    name_col_det = found_cols.get('product_name')
+                    if name_col_det:
+                        search_cols.append(name_col_det)
+                    
+                    # Добавляем абсолютно все текстовые колонки для тотального поиска
+                    for col in df.columns:
+                        if df[col].dtype == 'object' or pd.api.types.is_string_dtype(df[col]):
+                            if col not in search_cols:
+                                search_cols.append(col)
+                    
+                    # Определяем финансовую колонку (выручка)
+                    val_col = found_cols.get('revenue')
+                    if not val_col:
+                        for col in df.columns:
+                            col_lower = str(col).lower()
+                            if any(syn in col_lower for syn in ['выручк', 'оплат', 'реализ', 'сумм', 'цена']):
+                                if pd.api.types.is_numeric_dtype(df[col]):
+                                    val_col = col
+                                    break
+                    
+                    if search_cols and val_col:
                         stop_words = {
                             'сколько', 'принесли', 'принес', 'продали', 'купили', 'нашли', 'товар', 
                             'товары', 'по', 'за', 'в', 'и', 'для', 'с', 'на', 'выручка', 'прибыль', 'продажи'
                         }
-                        words = [re.sub(r'[^\w\s]', '', w) for w in q.split()]
-                        search_terms = [w for w in words if w and w not in stop_words and len(w) > 2]
+                        
+                        raw_words = q.split()
+                        search_terms = []
+                        for rw in raw_words:
+                            clean_word = re.sub(r'[^\w\s]', '', rw).lower()
+                            if clean_word and clean_word not in stop_words and len(clean_word) > 2:
+                                # Стемминг окончаний для русского языка (рукомойники -> рукомойник)
+                                suffixes = ('и', 'ы', 'а', 'я', 'ов', 'ев', 'ам', 'ям', 'ами', 'ями', 'ах', 'ях', 'у', 'е', 'ом', 'ем')
+                                stemmed = clean_word
+                                for suff in sorted(suffixes, key=len, reverse=True):
+                                    if clean_word.endswith(suff) and len(clean_word) - len(suff) > 3:
+                                        stemmed = clean_word[:-len(suff)]
+                                        break
+                                search_terms.append(stemmed)
                         
                         if search_terms:
                             mask = pd.Series([False] * len(df))
-                            for term in search_terms:
-                                # Простое усечение окончания для базового поиска на русском (рукомойники -> рукомойник)
-                                stem = term[:-1] if len(term) > 4 else term
-                                mask = mask | df[name_col].astype(str).str.lower().str.contains(stem, na=False)
+                            for col in search_cols:
+                                col_series = df[col].astype(str).str.lower()
+                                for term in search_terms:
+                                    mask = mask | col_series.str.contains(term, na=False)
                             
                             matched_df = df[mask]
                             if not matched_df.empty:
-                                matched_names = matched_df[name_col].unique()
-                                item_revenue = matched_df[rev_col].fillna(0).sum()
+                                display_col = name_col_det if name_col_det else search_cols[0]
+                                matched_names = matched_df[display_col].unique()
+                                
+                                item_revenue = matched_df[val_col].fillna(0).sum()
                                 item_net = matched_df['Row_Net'].fillna(0).sum() if 'Row_Net' in matched_df.columns else item_revenue
                                 item_count = len(matched_df)
                                 
@@ -248,13 +267,12 @@ if file:
                                     
                                 fallback_text = (
                                     f"🔍 **Результат локального анализа (так как Google API временно недоступен):**\n\n"
-                                    f"Найденные товары: **{names_str}**\n"
+                                    f"Найденные товары: **{names_str}** (колонка: *\"{display_col}\"*)\n"
                                     f"* **Количество продаж (строк):** {item_count} шт.\n"
-                                    f"* **Выручка (сумма продаж):** {item_revenue:,.0f} ₽\n"
-                                    f"* **Чистая прибыль (с учетом расходов):** {item_net:,.0f} ₽"
+                                    f"* **Выручка по найденным позициям:** {item_revenue:,.0f} ₽\n"
+                                    f"* **Чистая прибыль по найденным позициям (с учетом расходов):** {item_net:,.0f} ₽"
                                 )
                     
-                    # 2. Поиск по общим метрикам отчета, если по товарам не совпало
                     if not fallback_text:
                         if any(w in q for w in ['выручк', 'оборот', 'всего продали']):
                             fallback_text = f"📊 **Локальный результат:** Общая выручка по всему отчету составляет **{total_revenue:,.0f} ₽**."
@@ -263,7 +281,7 @@ if file:
                     
                     if fallback_text:
                         st.markdown(fallback_text)
-                        st.warning("⚠️ **Внимание:** Этот ответ рассчитан локальным кодом без участия ИИ, так как ваш API-ключ заблокирован со стороны Google (ошибка лимита 'limit: 0'). Как только вы обновите API-ключ в secrets, ИИ снова заработает на полную мощность.")
+                        st.warning("⚠️ **Внимание:** Этот ответ рассчитан локальным кодом без участия ИИ, так как ваш API-ключ заблокирован со стороны Google. Как только вы обновите API-ключ в secrets, ИИ снова заработает на полную мощность.")
                         with st.expander("Посмотреть технический лог ошибок API"):
                             for err in errors_log:
                                 st.write(f"❌ {err}")
