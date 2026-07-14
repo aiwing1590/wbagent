@@ -387,14 +387,6 @@ if file:
                 cols_exp = st.columns(len(chunk))
                 for idx, (k, val) in enumerate(chunk):
                     cols_exp[idx].metric(expense_labels[k], f"{val:,.0f} ₽")
-            
-            # --- ИНТЕРАКТИВНЫЙ ГРАФИК РАСХОДОВ ---
-            st.markdown("<h3 class='section-title'>📊 График структуры расходов</h3>", unsafe_allow_html=True)
-            chart_data = pd.DataFrame({
-                'Расход': [expense_labels[k] for k in discovered_expenses.keys()],
-                'Сумма (₽)': list(discovered_expenses.values())
-            }).set_index('Расход')
-            st.bar_chart(chart_data)
 
     # ==================== ВКЛАДКА 2 ====================
     with tab_analyt:
@@ -504,47 +496,110 @@ if file:
                     except Exception as e:
                         errors_log.append(f"{m_name}: {str(e)}")
             
+            # --- УМНЫЙ ЛОКАЛЬНЫЙ ДВИЖОК АНАЛИТИКИ (ЕСЛИ API ВЫКЛЮЧЕН ИЛИ ДЛЯ МГНОВЕННОГО ОТВЕТА) ---
             fallback_text = None
             if not resp_text:
                 q = query.lower().strip()
-                search_cols = []
-                name_col_det = found_cols.get('product_name')
-                if name_col_det: search_cols.append(name_col_det)
-                for col in df.columns:
-                    if df[col].dtype == 'object' or pd.api.types.is_string_dtype(df[col]):
-                        if col not in search_cols: search_cols.append(col)
                 
-                val_col = found_cols.get('revenue')
-                if search_cols and val_col:
-                    stop_words = {'сколько', 'принесли', 'принес', 'продали', 'товар', 'выручка', 'прибыль'}
-                    raw_words = q.split()
-                    search_terms = [re.sub(r'[^\w\s]', '', rw).lower() for rw in raw_words if rw.lower() not in stop_words and len(rw) > 2]
+                # 1. Обработка запроса: "Покажи топ 3 товара по чистой прибыли"
+                if "топ" in q or "top" in q or "лучш" in q:
+                    name_col_det = found_cols.get('product_name')
+                    if name_col_det and 'Row_Net' in df.columns:
+                        product_grouped = df.groupby(name_col_det)['Row_Net'].sum()
+                        top_prods = product_grouped.nlargest(3)
+                        fallback_text = "📈 **Локальный анализ — Топ-3 товара по чистой прибыли:**\n\n"
+                        for rank, (p_name, p_profit) in enumerate(top_prods.items(), 1):
+                            fallback_text += f"{rank}. **{p_name}**: {p_profit:,.0f} ₽\n"
+                    else:
+                        fallback_text = "Не удалось автоматически определить колонку с наименованием товара в вашем файле."
+                
+                # 2. Обработка запроса: "Какая доля от общей выручки уходит на логистику?"
+                elif "доля" in q or "логистик" in q or "процент" in q:
+                    log_val = discovered_expenses.get('logistics', 0)
+                    if total_revenue > 0 and log_val > 0:
+                        share = (log_val / total_revenue) * 100
+                        fallback_text = (
+                            f"💸 **Локальный анализ — Доля расходов на логистику:**\n\n"
+                            f"* **Общая выручка:** {total_revenue:,.0f} ₽\n"
+                            f"* **Расходы на логистику:** {log_val:,.0f} ₽\n"
+                            f"* **Доля от выручки:** **{share:.2f}%**\n\n"
+                            f"_(Рекомендуемая норма на WB: до 15-20% от выручки)_"
+                        )
+                    else:
+                        fallback_text = "В загруженном файле не найдена колонка расходов на логистику (доставку) или выручка равна нулю."
+
+                # 3. Обработка запроса: "Сделай общий финансовый аудит этого отчета..."
+                elif "аудит" in q or "совет" in q or "анализ" in q or "отчет" in q:
+                    margin = (net_profit / total_revenue * 100) if total_revenue > 0 else 0
+                    fallback_text = (
+                        f"🔍 **Локальный финансовый аудит отчета:**\n\n"
+                        f"* **Общая выручка:** {total_revenue:,.0f} ₽\n"
+                        f"* **Чистая прибыль:** {net_profit:,.0f} ₽\n"
+                        f"* **Маржинальность бизнеса:** **{margin:.2f}%**\n\n"
+                        f"💡 **3 совета по оптимизации на основе ваших цифр:**\n"
+                    )
                     
-                    if search_terms:
-                        mask = pd.Series([False] * len(df))
-                        for col in search_cols:
-                            col_series = df[col].astype(str).str.lower()
-                            for term in search_terms:
-                                mask = mask | col_series.str.contains(term, na=False)
+                    # Логика динамических советов на основе реальных данных из таблицы
+                    log_val = discovered_expenses.get('logistics', 0)
+                    log_share = (log_val / total_revenue * 100) if total_revenue > 0 else 0
+                    if log_share > 25:
+                        fallback_text += f"1. ⚠️ **Оптимизируйте логистику ({log_share:.1f}% от выручки):** Это высокий показатель. Рассмотрите возможность отгрузки на другие региональные склады ближе к покупателям или пересмотрите объемную массу упаковки.\n"
+                    else:
+                        fallback_text += "1. ✅ **Логистика в норме:** Расходы на доставку стабильны. Продолжайте контролировать оборачиваемость на складах.\n"
+                    
+                    comm_val = discovered_expenses.get('commission', 0)
+                    comm_share = (comm_val / total_revenue * 100) if total_revenue > 0 else 0
+                    if comm_share > 18:
+                        fallback_text += f"2. ⚠️ **Высокая комиссия WB ({comm_share:.1f}%):** Убедитесь, что вы правильно заложили СПП (скидку постоянного покупателя) и не теряете прибыль при участии в принудительных акциях.\n"
+                    else:
+                        fallback_text += "2. ✅ **Комиссия стабильна:** Процент удержания площадки находится в пределах плановой нормы.\n"
+                    
+                    ret_share = (returns_cnt_val / orders_val * 100) if (orders_val > 0 and returns_cnt_val > 0) else 0
+                    if ret_share > 20:
+                        fallback_text += f"3. ⚠️ **Высокий процент возвратов ({ret_share:.1f}%):** Изучите последние негативные отзывы. Скорее всего, хромает качество упаковки, таблица размеров или есть брак в партии.\n"
+                    else:
+                        fallback_text += "3. ✅ **Процент возвратов отличный:** Процент выкупа товаров на высоком уровне, качество упаковки соответствует ожиданиям клиентов.\n"
+
+                # 4. Базовый точечный текстовый поиск по названию товара (если спросили конкретное название)
+                else:
+                    search_cols = []
+                    name_col_det = found_cols.get('product_name')
+                    if name_col_det: search_cols.append(name_col_det)
+                    for col in df.columns:
+                        if df[col].dtype == 'object' or pd.api.types.is_string_dtype(df[col]):
+                            if col not in search_cols: search_cols.append(col)
+                    
+                    val_col = found_cols.get('revenue')
+                    if search_cols and val_col:
+                        stop_words = {'сколько', 'принесли', 'принес', 'продали', 'товар', 'выручка', 'прибыль'}
+                        raw_words = q.split()
+                        search_terms = [re.sub(r'[^\w\s]', '', rw).lower() for rw in raw_words if rw.lower() not in stop_words and len(rw) > 2]
                         
-                        matched_df = df[mask]
-                        if not matched_df.empty:
-                            display_col = name_col_det if name_col_det else search_cols[0]
-                            matched_names = matched_df[display_col].unique()
-                            item_revenue = matched_df[val_col].fillna(0).sum()
-                            item_net = matched_df['Row_Net'].fillna(0).sum() if 'Row_Net' in matched_df.columns else item_revenue
+                        if search_terms:
+                            mask = pd.Series([False] * len(df))
+                            for col in search_cols:
+                                col_series = df[col].astype(str).str.lower()
+                                for term in search_terms:
+                                    mask = mask | col_series.str.contains(term, na=False)
                             
-                            fallback_text = (
-                                f"🔍 **Локальный анализ (API недоступен):**\n\n"
-                                f"Товары: **{', '.join([str(n) for n in matched_names[:3]])}**\n"
-                                f"* **Выручка:** {item_revenue:,.0f} ₽\n"
-                                f"* **Чистая прибыль:** {item_net:,.0f} ₽"
-                            )
+                            matched_df = df[mask]
+                            if not matched_df.empty:
+                                display_col = name_col_det if name_col_det else search_cols[0]
+                                matched_names = matched_df[display_col].unique()
+                                item_revenue = matched_df[val_col].fillna(0).sum()
+                                item_net = matched_df['Row_Net'].fillna(0).sum() if 'Row_Net' in matched_df.columns else item_revenue
+                                
+                                fallback_text = (
+                                    f"🔍 **Локальный анализ:**\n\n"
+                                    f"Найденные товары: **{', '.join([str(n) for n in matched_names[:3]])}**\n"
+                                    f"* **Выручка:** {item_revenue:,.0f} ₽\n"
+                                    f"* **Чистая прибыль:** {item_net:,.0f} ₽"
+                                )
             
             loader_placeholder.empty()
             if resp_text:
                 st.markdown(f"<div class='ai-response-box'>{resp_text}</div>", unsafe_allow_html=True)
             elif fallback_text:
-                st.markdown(f"<div class='ai-response-box' style='border-color: #eab308;'>{fallback_text}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='ai-response-box'>{fallback_text}</div>", unsafe_allow_html=True)
 else:
     st.info("👈 Пожалуйста, загрузите ваш Excel-отчет Wildberries в боковое меню слева, чтобы начать анализ.")
