@@ -3,7 +3,65 @@ import pandas as pd
 import google.generativeai as genai
 import re
 
+# Настройка страницы (выставляем темную тему по умолчанию через CSS)
 st.set_page_config(page_title="WB AI Agent", layout="wide")
+
+# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль и премиум карточки) ---
+st.markdown("""
+    <style>
+    /* Основной фон приложения и тексты */
+    .stApp {
+        background-color: #0d0e15;
+        color: #e2e8f0;
+    }
+    
+    /* Стилизация вкладок (Tabs) */
+    button[data-baseweb="tab"] {
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        color: #a0aec0 !important;
+        border-bottom: 2px solid transparent !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #bc7af9 !important;
+        border-bottom: 2px solid #bc7af9 !important;
+    }
+    
+    /* Красивые закругленные карточки для метрик */
+    div[data-testid="stMetric"] {
+        background-color: #161925;
+        border: 1px solid #2d3142;
+        padding: 15px 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        transition: transform 0.2s, border-color 0.2s;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        border-color: #bc7af9;
+    }
+    
+    /* Подсветка цифр метрик */
+    div[data-testid="stMetricValue"] {
+        color: #bc7af9 !important; /* Яркий фиолетовый */
+        font-size: 26px !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Текст ярлыков метрик */
+    div[data-testid="stMetricLabel"] {
+        color: #94a3b8 !important;
+        font-size: 13px !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Кастомные контейнеры */
+    div[class*="stElementContainer"] {
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # Инициализация ИИ
 def get_model():
@@ -17,20 +75,31 @@ def get_model():
 model_configured = get_model()
 
 # Авторизация
-if 'password_correct' not in st.session_state: st.session_state.password_correct = False
+if 'password_correct' not in st.session_state: 
+    st.session_state.password_correct = False
+
 if not st.session_state.password_correct:
-    st.header("🔐 Вход")
-    if st.text_input("Пароль", type="password") == "wb140":
-        st.session_state.password_correct = True
-        st.rerun()
+    st.markdown("<h2 style='text-align: center; color: #bc7af9;'>🔐 Вход в WB AI Agent</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.container(border=True):
+            password = st.text_input("Введите пароль доступа:", type="password")
+            if password == "wb140":
+                st.session_state.password_correct = True
+                st.rerun()
+            elif password:
+                st.error("Неверный пароль")
     st.stop()
 
-st.title("📊 ИИ-Аналитик WB (PRO)")
-file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
+# Главный экран приложения
+st.markdown("<h1 style='color: #ffffff; margin-bottom: 0px;'>📊 ИИ-Аналитик WB <span style='color: #bc7af9; font-size: 20px;'>PRO Edition</span></h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #94a3b8; margin-top: 0px;'>Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
+
+file = st.sidebar.file_uploader("📂 Загрузите отчет (.xlsx)", type=["xlsx"])
 
 if file:
     df = pd.read_excel(file)
-    st.success("Данные успешно загружены и проанализированы!")
+    st.sidebar.success("✅ Файл успешно загружен!")
 
     # СЛОВАРЬ СИНОНИМОВ (Умный поиск колонок по ключевым словам)
     keywords_map = {
@@ -60,7 +129,6 @@ if file:
                     return col
         return None
 
-    # Определяем, какие колонки реально существуют в загруженном файле
     found_cols = {}
     for key in keywords_map.keys():
         if key == 'orders_cnt' or key == 'revenue':
@@ -69,11 +137,9 @@ if file:
             found_cols[key] = detect_column(key)
 
     # --- СБОР И РАСЧЕТ ДАННЫХ ---
-    # Выручка
     rev_col = found_cols['revenue']
     total_revenue = df[rev_col].fillna(0).sum() if rev_col else 0
 
-    # Собираем все обнаруженные расходы динамически
     discovered_expenses = {}
     expense_keys = ['logistics', 'commission', 'cost', 'promo', 'storage', 'acceptance', 'fines']
     
@@ -82,11 +148,9 @@ if file:
         if col_name:
             discovered_expenses[k] = df[col_name].fillna(0).abs().sum()
 
-    # Чистая прибыль = Выручка минус сумма всех найденных в файле расходов
     total_expenses_sum = sum(discovered_expenses.values())
     net_profit = total_revenue - total_expenses_sum
 
-    # Данные по возвратам и штукам заказов (если есть)
     ret_cnt_col = found_cols['returns_cnt']
     ret_sum_col = found_cols['returns_sum']
     ord_cnt_col = found_cols['orders_cnt']
@@ -98,81 +162,116 @@ if file:
     returns_cnt_val = df[ret_cnt_col].fillna(0).sum() if (ret_cnt_col and pd.api.types.is_numeric_dtype(df[ret_cnt_col])) else 0
     returns_sum_val = df[ret_sum_col].fillna(0).sum() if ret_sum_col else 0
 
-    # --- ВЫВОД ФИНАНСОВЫХ МЕТРИК ---
-    st.subheader("💰 Финансовые показатели")
-    
-    main_metrics = []
-    if rev_col: main_metrics.append(("Выручка", f"{total_revenue:,.0f} ₽"))
-    main_metrics.append(("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽"))
-    if orders_val > 0: main_metrics.append(("Заказов (шт)", f"{int(orders_val)}"))
-    if returns_cnt_val > 0: main_metrics.append(("Возвраты (кол-во)", f"{int(returns_cnt_val)}"))
-    if returns_sum_val > 0: main_metrics.append(("Сумма возвратов", f"{returns_sum_val:,.0f} ₽"))
+    # Создаем динамическую прибыль на уровне каждой строки
+    df['Row_Net'] = df[rev_col].fillna(0) if rev_col else 0
+    for k in expense_keys:
+        c_name = found_cols[k]
+        if c_name:
+            df['Row_Net'] = df['Row_Net'] - df[c_name].fillna(0).abs()
 
-    if main_metrics:
-        cols_main = st.columns(len(main_metrics))
-        for idx, (label, val) in enumerate(main_metrics):
-            cols_main[idx].metric(label, val)
+    # --- ТАБЫ (ВКЛАДКИ) ---
+    tab_fin, tab_analyt, tab_ai = st.tabs(["💰 Финансовый дашборд", "📦 Аналитика по товарам", "🤖 ИИ-Ассистент"])
 
-    if discovered_expenses:
-        st.markdown("##### Расшифровка расходов из файла:")
-        expense_labels = {
-            'logistics': 'Логистика', 'commission': 'Комиссия', 'cost': 'Себестоимость',
-            'promo': 'Продвижение/Реклама', 'storage': 'Хранение', 'acceptance': 'Платная приемка',
-            'fines': 'Штрафы'
-        }
-        cols_exp = st.columns(len(discovered_expenses))
-        for idx, (k, val) in enumerate(discovered_expenses.items()):
-            cols_exp[idx].metric(expense_labels[k], f"{val:,.0f} ₽")
-
-    # --- АНАЛИЗ ЭФФЕКТИВНОСТИ (ТОВАРЫ И ДНИ) ---
-    name_col = found_cols['product_name']
-    date_col = found_cols['date']
-
-    if rev_col and (name_col or date_col):
-        st.subheader("📦 Анализ эффективности")
+    # ==================== ВКЛАДКА 1: ФИНАНСЫ ====================
+    with tab_fin:
+        st.markdown("<h3 style='color: #ffffff;'>📈 Главные метрики</h3>", unsafe_allow_html=True)
         
-        # Рассчитываем динамическую прибыль для каждой строки индивидуально
-        df['Row_Net'] = df[rev_col].fillna(0)
-        for k in expense_keys:
-            c_name = found_cols[k]
-            if c_name:
-                df['Row_Net'] = df['Row_Net'] - df[c_name].fillna(0).abs()
+        main_metrics = []
+        if rev_col: 
+            main_metrics.append(("Выручка", f"{total_revenue:,.0f} ₽"))
+        main_metrics.append(("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽"))
+        if orders_val > 0: 
+            main_metrics.append(("Заказов", f"{int(orders_val)} шт"))
+        if returns_cnt_val > 0: 
+            main_metrics.append(("Возвраты", f"{int(returns_cnt_val)} шт"))
+        if returns_sum_val > 0: 
+            main_metrics.append(("Сумма возвратов", f"{returns_sum_val:,.0f} ₽"))
 
-        col_left, col_right = st.columns(2)
+        if main_metrics:
+            cols_main = st.columns(len(main_metrics))
+            for idx, (label, val) in enumerate(main_metrics):
+                cols_main[idx].metric(label, val)
 
-        if name_col:
-            product_grouped = df.groupby(name_col)['Row_Net'].sum()
-            best_prod = product_grouped.idxmax()
-            worst_prod = product_grouped.idxmin()
-            
-            with col_left:
-                st.metric(f"📈 Лучший товар ({str(best_prod)[:20]}...)", f"{product_grouped[best_prod]:,.0f} ₽")
-                st.metric(f"📉 Худший товар ({str(worst_prod)[:20]}...)", f"{product_grouped[worst_prod]:,.0f} ₽")
+        if discovered_expenses:
+            st.markdown("<br><h3 style='color: #ffffff;'>💸 Расшифровка расходов</h3>", unsafe_allow_html=True)
+            expense_labels = {
+                'logistics': 'Логистика', 'commission': 'Комиссия', 'cost': 'Себестоимость',
+                'promo': 'Реклама/Продвижение', 'storage': 'Хранение', 'acceptance': 'Приемка',
+                'fines': 'Штрафы'
+            }
+            # Отображаем по 4 карточки в ряд для компактности
+            exp_items = list(discovered_expenses.items())
+            chunk_size = 4
+            for i in range(0, len(exp_items), chunk_size):
+                chunk = exp_items[i:i + chunk_size]
+                cols_exp = st.columns(len(chunk))
+                for idx, (k, val) in enumerate(chunk):
+                    cols_exp[idx].metric(expense_labels[k], f"{val:,.0f} ₽")
 
-        if date_col:
-            df['Clean_Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.strftime('%Y-%m-%d')
-            date_grouped = df.groupby('Clean_Date')['Row_Net'].sum()
-            
-            if not date_grouped.empty:
-                best_day = date_grouped.idxmax()
-                worst_day = date_grouped.idxmin()
+    # ==================== ВКЛАДКА 2: АНАЛИТИКА ====================
+    with tab_analyt:
+        name_col = found_cols['product_name']
+        date_col = found_cols['date']
+
+        if rev_col and (name_col or date_col):
+            st.markdown("<h3 style='color: #ffffff;'>🎯 Эффективность продаж</h3>", unsafe_allow_html=True)
+            col_left, col_right = st.columns(2)
+
+            if name_col:
+                product_grouped = df.groupby(name_col)['Row_Net'].sum()
+                best_prod = product_grouped.idxmax()
+                worst_prod = product_grouped.idxmin()
                 
-                with col_right:
-                    st.metric(f"📅 Лучший день ({str(best_day)})", f"{date_grouped[best_day]:,.0f} ₽")
-                    st.metric(f"📅 Худший день ({str(worst_day)})", f"{date_grouped[worst_day]:,.0f} ₽")
+                with col_left:
+                    with st.container(border=True):
+                        st.markdown("<p style='color: #10b981; font-weight: bold; font-size: 16px;'>📈 Самый прибыльный товар</p>", unsafe_allow_html=True)
+                        st.write(f"**{best_prod}**")
+                        st.metric("Чистая прибыль", f"{product_grouped[best_prod]:,.0f} ₽")
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    with st.container(border=True):
+                        st.markdown("<p style='color: #ef4444; font-weight: bold; font-size: 16px;'>📉 Самый убыточный товар</p>", unsafe_allow_html=True)
+                        st.write(f"**{worst_prod}**")
+                        st.metric("Убыток / Прибыль", f"{product_grouped[worst_prod]:,.0f} ₽")
 
-    # --- БЛОК ИСКУССТВЕННОГО ИНТЕЛЛЕКТА ---
-    st.markdown("---")
-    if model_configured:
-        query = st.text_input("🤖 Спросить ИИ-агента по этому отчету:")
+            if date_col:
+                df['Clean_Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.strftime('%Y-%m-%d')
+                date_grouped = df.groupby('Clean_Date')['Row_Net'].sum()
+                
+                if not date_grouped.empty:
+                    best_day = date_grouped.idxmax()
+                    worst_day = date_grouped.idxmin()
+                    
+                    with col_right:
+                        with st.container(border=True):
+                            st.markdown("<p style='color: #10b981; font-weight: bold; font-size: 16px;'>📅 Лучший день по продажам</p>", unsafe_allow_html=True)
+                            st.write(f"**Дата: {best_day}**")
+                            st.metric("Заработано", f"{date_grouped[best_day]:,.0f} ₽")
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        
+                        with st.container(border=True):
+                            st.markdown("<p style='color: #ef4444; font-weight: bold; font-size: 16px;'>📅 Худший день по продажам</p>", unsafe_allow_html=True)
+                            st.write(f"**Дата: {worst_day}**")
+                            st.metric("Заработано", f"{date_grouped[worst_day]:,.0f} ₽")
+        else:
+            st.info("В файле отсутствуют колонки даты или названия товара для глубокой аналитики.")
+
+    # ==================== ВКЛАДКА 3: ИИ И ПОИСК ====================
+    with tab_ai:
+        st.markdown("<h3 style='color: #ffffff;'>🤖 Быстрые вопросы по отчету</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #94a3b8;'>Напишите свой вопрос (например: <i>'Рукомойники сколько принесли'</i>) — если API-ключ временно заблокирован, сработает мгновенный локальный поиск!</p>", unsafe_allow_html=True)
+        
+        query = st.text_input("Задайте вопрос ИИ-агенту:", placeholder="Введите ваш запрос...")
+        
         if query:
-            with st.spinner("ИИ анализирует структуру и показатели отчета..."):
-                # Формируем краткую сводку для контекста ИИ
+            with st.spinner("Анализирую данные отчета..."):
                 ai_context = f"Данные отчета: Выручка={total_revenue}, Чистая прибыль={net_profit}. "
                 for k, v in discovered_expenses.items():
                     ai_context += f"Расход {k}={v}. "
                 
-                ai_context += f"Доступные колонки в загруженном файле: {list(df.columns)}. "
+                ai_context += f"Доступные колонки: {list(df.columns)}. "
                 
                 models_to_try = ['gemini-2.0-flash', 'gemini-2.5-pro']
                 resp_text = None
@@ -186,36 +285,38 @@ if file:
                     f"Ответ:"
                 )
                 
-                for m_name in models_to_try:
-                    try:
-                        temp_model = genai.GenerativeModel(m_name)
-                        resp = temp_model.generate_content(prompt)
-                        resp_text = resp.text
-                        break
-                    except Exception as e:
-                        errors_log.append(f"{m_name}: {str(e)}")
-                        continue
+                # Попытка вызвать ИИ
+                if model_configured:
+                    for m_name in models_to_try:
+                        try:
+                            temp_model = genai.GenerativeModel(m_name)
+                            resp = temp_model.generate_content(prompt)
+                            resp_text = resp.text
+                            break
+                        except Exception as e:
+                            errors_log.append(f"{m_name}: {str(e)}")
+                            continue
                 
+                # Если ИИ ответил
                 if resp_text:
+                    st.markdown("<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #bc7af9;'>", unsafe_allow_html=True)
                     st.write(resp_text)
+                    st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    # --- УМНЫЙ ЛОКАЛЬНЫЙ ПОИСК (ФОЛБЕК ПРИ ОТСУТСТВИИ СВЯЗИ С ИИ) ---
+                    # --- УМНЫЙ ЛОКАЛЬНЫЙ ПОИСК (БЕЗОШИБОЧНЫЙ ФОЛБЕК) ---
                     fallback_text = None
                     q = query.lower().strip()
                     
-                    # Собираем все колонки, в которых может лежать текст
                     search_cols = []
                     name_col_det = found_cols.get('product_name')
                     if name_col_det:
                         search_cols.append(name_col_det)
                     
-                    # Добавляем абсолютно все текстовые колонки для тотального поиска
                     for col in df.columns:
                         if df[col].dtype == 'object' or pd.api.types.is_string_dtype(df[col]):
                             if col not in search_cols:
                                 search_cols.append(col)
                     
-                    # Определяем финансовую колонку (выручка)
                     val_col = found_cols.get('revenue')
                     if not val_col:
                         for col in df.columns:
@@ -236,7 +337,6 @@ if file:
                         for rw in raw_words:
                             clean_word = re.sub(r'[^\w\s]', '', rw).lower()
                             if clean_word and clean_word not in stop_words and len(clean_word) > 2:
-                                # Стемминг окончаний для русского языка (рукомойники -> рукомойник)
                                 suffixes = ('и', 'ы', 'а', 'я', 'ов', 'ев', 'ам', 'ям', 'ами', 'ями', 'ах', 'ях', 'у', 'е', 'ом', 'ем')
                                 stemmed = clean_word
                                 for suff in sorted(suffixes, key=len, reverse=True):
@@ -280,7 +380,7 @@ if file:
                             fallback_text = f"📊 **Локальный результат:** Общая чистая прибыль по отчету составляет **{net_profit:,.0f} ₽**."
                     
                     if fallback_text:
-                        st.markdown(fallback_text)
+                        st.markdown(f"<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #eab308; margin-bottom: 15px;'>{fallback_text}</div>", unsafe_allow_html=True)
                         st.warning("⚠️ **Внимание:** Этот ответ рассчитан локальным кодом без участия ИИ, так как ваш API-ключ заблокирован со стороны Google. Как только вы обновите API-ключ в secrets, ИИ снова заработает на полную мощность.")
                         with st.expander("Посмотреть технический лог ошибок API"):
                             for err in errors_log:
@@ -289,3 +389,6 @@ if file:
                         st.error("Не удалось связаться с ИИ и не удалось найти совпадений локально. Лог ошибок по моделям:")
                         for err in errors_log:
                             st.write(f"❌ {err}")
+else:
+    # Красивая заглушка, если файл не загружен
+    st.info("👈 Пожалуйста, загрузите ваш Excel-отчет Wildberries в боковое меню слева, чтобы начать анализ.")
