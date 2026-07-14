@@ -6,7 +6,7 @@ import re
 # Настройка страницы
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
-# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + Шрифты Apple + Анимации + Gemini-поиск) ---
+# --- ЕДИНЫЙ КОСМИЧЕСКИЙ ТЕМНЫЙ СТИЛЬ (Фиолетовый WB + Шрифты Apple + Gemini Search) ---
 st.markdown("""
     <style>
     /* Глобальный шрифт Apple для всех элементов интерфейса */
@@ -14,10 +14,22 @@ st.markdown("""
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
     }
 
-    /* Основной фон приложения и тексты */
+    /* Основной глубокий темный фон приложения и тексты */
     .stApp {
-        background-color: #0d0e15;
-        color: #e2e8f0;
+        background-color: #0d0e15 !important;
+        color: #e2e8f0 !important;
+    }
+    
+    /* Стилизация бокового меню (Sidebar) в темном стиле */
+    section[data-testid="stSidebar"] {
+        background-color: #0d0e15 !important;
+        border-right: 1px solid #2d3142 !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stFileUploader"] {
+        background-color: #161925 !important;
+        border: 1px dashed #2d3142 !important;
+        border-radius: 12px !important;
+        padding: 10px !important;
     }
     
     /* Стилизация вкладок (Tabs) */
@@ -36,8 +48,8 @@ st.markdown("""
     
     /* Красивые закругленные карточки для метрик */
     div[data-testid="stMetric"] {
-        background-color: #161925;
-        border: 1px solid #2d3142;
+        background-color: #161925 !important;
+        border: 1px solid #2d3142 !important;
         padding: 15px 20px;
         border-radius: 12px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
@@ -45,10 +57,10 @@ st.markdown("""
     }
     div[data-testid="stMetric"]:hover {
         transform: translateY(-2px);
-        border-color: #bc7af9;
+        border-color: #bc7af9 !important;
     }
     
-    /* Подсветка цифр метрик (в стиле Apple) */
+    /* Подсветка цифр метрик */
     div[data-testid="stMetricValue"] {
         color: #bc7af9 !important;
         font-size: 26px !important;
@@ -166,7 +178,7 @@ st.markdown("""
         display: none !important;
     }
     
-    /* 1. Красивая строчка ввода ПАРОЛЯ */
+    /* Строка ввода ПАРОЛЯ */
     div[data-testid="stTextInput"] input[type="password"] {
         background-color: #0d0e15 !important;
         border: 2px solid #2d3142 !important;
@@ -184,7 +196,7 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(188, 122, 249, 0.35) !important;
     }
     
-    /* 2. СТРОКА ПОИСКА В СТИЛЕ GOOGLE GEMINI */
+    /* СТРОКА ПОИСКА В СТИЛЕ GOOGLE GEMINI */
     div[data-testid="stTextInput"] input[type="text"] {
         background-color: #161925 !important;
         border: 1px solid #2d3142 !important;
@@ -192,8 +204,8 @@ st.markdown("""
         text-align: left !important;
         font-size: 16px !important;
         font-weight: 400 !important;
-        border-radius: 28px !important; /* Форма капсулы как у Gemini */
-        padding: 15px 24px !important; /* Большие просторные отступы */
+        border-radius: 28px !important; /* Форма капсулы */
+        padding: 15px 24px !important; /* Просторные отступы */
         letter-spacing: normal !important;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -203,11 +215,34 @@ st.markdown("""
         background-color: #1b1e2c !important;
         box-shadow: 0 0 20px rgba(188, 122, 249, 0.25), 0 4px 15px rgba(0, 0, 0, 0.3) !important;
     }
-    /* Кастомизация цвета плейсхолдера */
     div[data-testid="stTextInput"] input[type="text"]::placeholder {
         color: #64748b !important;
         opacity: 1;
     }
+    
+    /* Стилизация Prompt-кнопок под чипсы */
+    .stButton > button {
+        background-color: #161925 !important;
+        color: #a0aec0 !important;
+        border: 1px solid #2d3142 !important;
+        border-radius: 20px !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease-in-out !important;
+        padding: 6px 16px !important;
+    }
+    .stButton > button:hover {
+        background-color: #1b1e2c !important;
+        border-color: #bc7af9 !important;
+        color: #ffffff !important;
+        box-shadow: 0 0 10px rgba(188, 122, 249, 0.2) !important;
+    }
+
+    /* Оформление кастомных текстовых блоков */
+    .main-title { color: #ffffff !important; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0px; }
+    .main-subtitle { color: #94a3b8 !important; margin-top: 5px; font-size: 15px; }
+    .section-title { color: #ffffff !important; font-weight: 600; margin-top: 20px; margin-bottom: 15px; }
+    .ai-response-box { background-color: #161925; border: 1px solid #bc7af9; color: #ffffff; padding: 20px; border-radius: 12px; margin-top: 15px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -247,8 +282,8 @@ if not st.session_state.password_correct:
     st.stop()
 
 # --- ГЛАВНЫЙ ЭКРАН ПРИЛОЖЕНИЯ ---
-st.markdown("<h1 style='color: #ffffff; margin-bottom: 0px; font-weight: 700; letter-spacing: -0.5px;'>📊 ИИ-Аналитик WB <span style='color: #bc7af9; font-size: 18px; font-weight: 500; letter-spacing: 0px;'>PRO Edition</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='color: #94a3b8; margin-top: 5px; font-size: 15px;'>Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>📊 ИИ-Аналитик WB <span style='font-size: 18px; font-weight: 500; color: #bc7af9;'>PRO Edition</span></h1>", unsafe_allow_html=True)
+st.markdown("<p class='main-subtitle'>Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
 
 file = st.sidebar.file_uploader("📂 Загрузите отчет (.xlsx)", type=["xlsx"])
 
@@ -326,10 +361,10 @@ if file:
 
     # ==================== ВКЛАДКА 1 ====================
     with tab_fin:
-        st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>📈 Главные метрики</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 class='section-title'>📈 Главные метрики</h3>", unsafe_allow_html=True)
         main_metrics = []
         if rev_col: main_metrics.append(("Выручка", f"{total_revenue:,.0f} ₽"))
-        main_metrics.append(("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽"))
+        main_metrics.append(("Чистая прибыль", f"{net_profit:,.0f} ₽"))
         if orders_val > 0: main_metrics.append(("Заказов", f"{int(orders_val)} шт"))
         if returns_cnt_val > 0: main_metrics.append(("Возвраты", f"{int(returns_cnt_val)} шт"))
         if returns_sum_val > 0: main_metrics.append(("Сумма возвратов", f"{returns_sum_val:,.0f} ₽"))
@@ -340,7 +375,7 @@ if file:
                 cols_main[idx].metric(label, val)
 
         if discovered_expenses:
-            st.markdown("<br><h3 style='color: #ffffff; font-weight: 600;'>💸 Расшифровка расходов</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 class='section-title'>💸 Расшифровка расходов</h3>", unsafe_allow_html=True)
             expense_labels = {
                 'logistics': 'Логистика', 'commission': 'Комиссия', 'cost': 'Себестоимость',
                 'promo': 'Реклама', 'storage': 'Хранение', 'acceptance': 'Приемка', 'fines': 'Штрафы'
@@ -352,6 +387,14 @@ if file:
                 cols_exp = st.columns(len(chunk))
                 for idx, (k, val) in enumerate(chunk):
                     cols_exp[idx].metric(expense_labels[k], f"{val:,.0f} ₽")
+            
+            # --- ИНТЕРАКТИВНЫЙ ГРАФИК РАСХОДОВ ---
+            st.markdown("<h3 class='section-title'>📊 График структуры расходов</h3>", unsafe_allow_html=True)
+            chart_data = pd.DataFrame({
+                'Расход': [expense_labels[k] for k in discovered_expenses.keys()],
+                'Сумма (₽)': list(discovered_expenses.values())
+            }).set_index('Расход')
+            st.bar_chart(chart_data)
 
     # ==================== ВКЛАДКА 2 ====================
     with tab_analyt:
@@ -359,7 +402,7 @@ if file:
         date_col = found_cols['date']
 
         if rev_col and (name_col or date_col):
-            st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>🎯 Эффективность продаж</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 class='section-title'>🎯 Эффективность продаж</h3>", unsafe_allow_html=True)
             col_left, col_right = st.columns(2)
 
             if name_col:
@@ -399,10 +442,29 @@ if file:
 
     # ==================== ВКЛАДКА 3 (ИИ И GEMINI-ПОИСК) ====================
     with tab_ai:
-        st.markdown("<h3 style='color: #ffffff; font-weight: 600; margin-bottom: 15px;'>🤖 Спросите ИИ-агента</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 class='section-title'>🤖 Спросите ИИ-агента</h3>", unsafe_allow_html=True)
         
-        # Строка поиска теперь выглядит как в Google Gemini
-        query = st.text_input("Задайте вопрос ИИ-агенту:", placeholder="Введите ваш запрос к отчету (например: Сколько принесла куртка?)...")
+        # --- БЫСТРЫЕ ШАБЛОНЫ (PROMPT CHIPS) ---
+        if 'ai_search_input' not in st.session_state:
+            st.session_state.ai_search_input = ""
+
+        def select_chip(text):
+            st.session_state.ai_search_input = text
+
+        st.markdown("<p style='font-size: 13px; opacity: 0.7; margin-bottom: 8px;'>Быстрые шаблоны вопросов:</p>", unsafe_allow_html=True)
+        
+        col_chip1, col_chip2, col_chip3 = st.columns(3)
+        with col_chip1:
+            st.button("📈 Топ-3 товара по прибыли", use_container_width=True, on_click=select_chip, args=("Покажи топ 3 товара по чистой прибыли",))
+        with col_chip2:
+            st.button("💸 Доля расходов на логистику", use_container_width=True, on_click=select_chip, args=("Какая доля от общей выручки уходит на логистику?",))
+        with col_chip3:
+            st.button("🔍 Сделай краткий аудит отчета", use_container_width=True, on_click=select_chip, args=("Сделай общий финансовый аудит этого отчета и дай 3 совета по оптимизации",))
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Строка поиска Gemini с динамическим значением из чипсов
+        query = st.text_input("Задайте вопрос ИИ-агенту:", key="ai_search_input", placeholder="Введите ваш запрос к отчету (например: Сколько принесла куртка?)...")
         
         if query:
             loader_placeholder = st.empty()
@@ -481,10 +543,8 @@ if file:
             
             loader_placeholder.empty()
             if resp_text:
-                st.markdown("<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #bc7af9;'>", unsafe_allow_html=True)
-                st.write(resp_text)
-                st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='ai-response-box'>{resp_text}</div>", unsafe_allow_html=True)
             elif fallback_text:
-                st.markdown(f"<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #eab308;'>{fallback_text}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='ai-response-box' style='border-color: #eab308;'>{fallback_text}</div>", unsafe_allow_html=True)
 else:
     st.info("👈 Пожалуйста, загрузите ваш Excel-отчет Wildberries в боковое меню слева, чтобы начать анализ.")
