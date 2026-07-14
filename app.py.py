@@ -6,7 +6,7 @@ import re
 # Настройка страницы
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
-# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + анимация летающего шарика) ---
+# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + все анимации) ---
 st.markdown("""
     <style>
     /* Основной фон приложения и тексты */
@@ -61,7 +61,7 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* === СТИЛИ ДЛЯ ЛЕТАЮЩЕГО НЕОНОВОГО ШАРИКА === */
+    /* === СТИЛИ ДЛЯ ЛЕТАЮЩЕГО НЕОНОВОГО ШАРИКА (ЗАГРУЗЧИК ИИ) === */
     .loader-container {
         display: flex;
         flex-direction: column;
@@ -74,8 +74,6 @@ st.markdown("""
         margin: 20px 0;
         box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
     }
-    
-    /* Дорожка, по которой бегает шар */
     .loader-track {
         width: 180px;
         height: 6px;
@@ -85,8 +83,6 @@ st.markdown("""
         margin-bottom: 20px;
         overflow: visible;
     }
-    
-    /* Сам светящийся шарик */
     .glowing-ball {
         width: 18px;
         height: 18px;
@@ -98,8 +94,6 @@ st.markdown("""
         box-shadow: 0 0 12px #bc7af9, 0 0 24px #bc7af9, 0 0 36px #7b2cbf;
         animation: fly-back-forth 1.6s ease-in-out infinite alternate;
     }
-    
-    /* Пульсирующий текст загрузки */
     .loader-text {
         color: #bc7af9;
         font-size: 14px;
@@ -108,29 +102,76 @@ st.markdown("""
         text-transform: uppercase;
         animation: pulse-text 1.6s ease-in-out infinite alternate;
     }
-    
-    /* Анимация движения шарика туда-сюда */
     @keyframes fly-back-forth {
+        0% { left: 0%; transform: translateX(0); }
+        100% { left: 100%; transform: translateX(-18px); }
+    }
+    @keyframes pulse-text {
+        0% { opacity: 0.4; transform: scale(0.98); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* === СТИЛИ ДЛЯ ЭКРАНА ЛОГИНА === */
+    .login-card {
+        background-color: #161925;
+        border: 1px solid #2d3142;
+        padding: 45px 35px;
+        border-radius: 24px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.6), 0 0 30px rgba(188, 122, 249, 0.15);
+        text-align: center;
+        margin-top: 10vh;
+    }
+    
+    /* Летающий неоновый ключ */
+    .floating-key {
+        font-size: 64px;
+        display: inline-block;
+        margin-bottom: 15px;
+        animation: key-float 3s ease-in-out infinite alternate;
+        filter: drop-shadow(0 0 15px #bc7af9);
+    }
+    @keyframes key-float {
         0% {
-            left: 0%;
-            transform: translateX(0);
+            transform: translateY(0px) rotate(-10deg);
         }
         100% {
-            left: 100%;
-            transform: translateX(-18px); /* Вычитаем размер шарика, чтобы он не вылетал за рамку */
+            transform: translateY(-20px) rotate(10deg);
         }
     }
     
-    /* Анимация плавного мерцания текста */
-    @keyframes pulse-text {
-        0% {
-            opacity: 0.4;
-            transform: scale(0.98);
-        }
-        100% {
-            opacity: 1;
-            transform: scale(1);
-        }
+    .login-title {
+        color: #ffffff !important;
+        font-size: 30px !important;
+        font-weight: 800 !important;
+        margin-bottom: 5px !important;
+        background: linear-gradient(45deg, #ffffff, #bc7af9);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .login-subtitle {
+        color: #94a3b8 !important;
+        font-size: 14px !important;
+        margin-bottom: 30px !important;
+    }
+    
+    /* Кастомная красивая строчка ввода пароля */
+    div[data-testid="stTextInput"] input {
+        background-color: #0d0e15 !important;
+        border: 2px solid #2d3142 !important;
+        color: #ffffff !important;
+        text-align: center !important;
+        font-size: 18px !important;
+        border-radius: 12px !important;
+        padding: 14px !important;
+        letter-spacing: 4px !important;
+        transition: all 0.3s ease-in-out !important;
+    }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #bc7af9 !important;
+        box-shadow: 0 0 15px rgba(188, 122, 249, 0.4) !important;
+    }
+    div[data-testid="stTextInput"] label {
+        display: none !important; /* Прячем дефолтную надпись Streamlit над инпутом */
     }
     </style>
 """, unsafe_allow_html=True)
@@ -146,24 +187,32 @@ def get_model():
 
 model_configured = get_model()
 
-# Авторизация
+# --- КРАСИВАЯ АВТОРИЗАЦИЯ ПО ЦЕНТРУ ---
 if 'password_correct' not in st.session_state: 
     st.session_state.password_correct = False
 
 if not st.session_state.password_correct:
-    st.markdown("<h2 style='text-align: center; color: #bc7af9;'>🔐 Вход в WB AI Agent</h2>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1.8, 1])
     with col2:
-        with st.container(border=True):
-            password = st.text_input("Введите пароль доступа:", type="password")
-            if password == "wb140":
-                st.session_state.password_correct = True
-                st.rerun()
-            elif password:
-                st.error("Неверный пароль")
+        st.markdown("""
+            <div class="login-card">
+                <div class="floating-key">🔑</div>
+                <h2 class="login-title">Добро пожаловать</h2>
+                <p class="login-subtitle">Введите пароль доступа для входа в WB AI Agent</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Инпут теперь стилизован через CSS, без стандартной подписи сверху
+        password = st.text_input("Пароль доступа", type="password", placeholder="••••••")
+        
+        if password == "wb140":
+            st.session_state.password_correct = True
+            st.rerun()
+        elif password:
+            st.markdown("<p style='color: #ef4444; text-align: center; margin-top: 15px; font-weight: bold;'>❌ Неверный пароль. Попробуйте еще раз.</p>", unsafe_allow_html=True)
     st.stop()
 
-# Главный экран приложения
+# --- ГЛАВНЫЙ ЭКРАН ПРИЛОЖЕНИЯ (Отображается после успешного ввода пароля) ---
 st.markdown("<h1 style='color: #ffffff; margin-bottom: 0px;'>📊 ИИ-Аналитик WB <span style='color: #bc7af9; font-size: 20px;'>PRO Edition</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='color: #94a3b8; margin-top: 0px;'>Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
 
@@ -335,10 +384,8 @@ if file:
         query = st.text_input("Задайте вопрос ИИ-агенту:", placeholder="Введите ваш запрос...")
         
         if query:
-            # 1. СОЗДАЕМ ПУСТОЙ КОНТЕЙНЕР ДЛЯ АНИМАЦИИ ЗАГРУЗКИ
             loader_placeholder = st.empty()
             
-            # 2. РЕНДЕРИМ ТУДА ЛЕТАЮЩИЙ ШАРИК СВЕТЯЩИЙСЯ С ПОМОЩЬЮ CSS КЛАССОВ
             loader_placeholder.markdown("""
                 <div class="loader-container">
                     <div class="loader-track">
@@ -348,7 +395,6 @@ if file:
                 </div>
             """, unsafe_allow_html=True)
             
-            # (Имитация "обдумывания" — здесь происходят все вызовы ИИ и обработка данных)
             ai_context = f"Данные отчета: Выручка={total_revenue}, Чистая прибыль={net_profit}. "
             for k, v in discovered_expenses.items():
                 ai_context += f"Расход {k}={v}. "
@@ -378,7 +424,6 @@ if file:
                         errors_log.append(f"{m_name}: {str(e)}")
                         continue
             
-            # Запускаем локальный поиск, если ИИ не сработал
             fallback_text = None
             if not resp_text:
                 q = query.lower().strip()
@@ -455,10 +500,8 @@ if file:
                     elif any(w in q for w in ['чистая прибыль', 'прибыль', 'заработал']):
                         fallback_text = f"📊 **Локальный результат:** Общая чистая прибыль по отчету составляет **{net_profit:,.0f} ₽**."
 
-            # 3. УДАЛЯЕМ АНИМАЦИЮ ИЗ КОНТЕЙНЕРА, КОГДА ОТВЕТ ПОЛУЧЕН
             loader_placeholder.empty()
 
-            # 4. ВЫВОДИМ РЕЗУЛЬТАТЫ ПОЛЬЗОВАТЕЛЮ
             if resp_text:
                 st.markdown("<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #bc7af9;'>", unsafe_allow_html=True)
                 st.write(resp_text)
