@@ -183,17 +183,8 @@ if file:
                 # Добавляем список реальных колонок файла, чтобы ИИ знал структуру
                 ai_context += f"Доступные колонки в загруженном файле: {list(df.columns)}. "
                 
-                # Попробуем динамически запросить список доступных моделей у Google API
-                available_models = []
-                try:
-                    for m in genai.list_models():
-                        if 'generateContent' in m.supported_generation_methods:
-                            available_models.append(m.name)
-                except Exception:
-                    pass
-                
-                if not available_models:
-                    available_models = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+                # Используем только самые быстрые и стабильные рабочие модели (без медленного genai.list_models())
+                models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro']
                 
                 resp_text = None
                 errors_log = []
@@ -207,7 +198,7 @@ if file:
                     f"Ответ:"
                 )
                 
-                for m_name in available_models:
+                for m_name in models_to_try:
                     try:
                         temp_model = genai.GenerativeModel(m_name)
                         resp = temp_model.generate_content(prompt)
