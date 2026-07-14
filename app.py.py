@@ -9,7 +9,8 @@ def get_model():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-1.5-flash')
+        # Используем более стабильную модель
+        return genai.GenerativeModel('gemini-1.5-pro')
     except:
         return None
 
@@ -39,7 +40,7 @@ if uploaded_file:
     df = pd.read_excel(uploaded_file)
     st.success("Данные загружены!")
     
-    # Метрики
+    # Основные метрики
     cols = st.columns(5)
     cols[0].metric("Заказы", f"{df['Заказы (из ленты в API)'].sum():,}")
     cols[1].metric("Сумма", f"{df['Сумма заказов (из ленты в API)'].sum():,.0f} ₽")
@@ -49,16 +50,28 @@ if uploaded_file:
     
     st.markdown("---")
     
+    # Аналитика по дням
+    st.markdown("### 📅 Анализ по дням")
+    if 'Дата' in df.columns:
+        daily_sales = df.groupby('Дата')['Сумма заказов (из ленты в API)'].sum()
+        col_a, col_b = st.columns(2)
+        col_a.metric("Лучший день", f"{daily_sales.max():,.0f} ₽", help=str(daily_sales.idxmax()))
+        col_b.metric("Худший день", f"{daily_sales.min():,.0f} ₽", help=str(daily_sales.idxmin()))
+    else:
+        st.info("Колонка 'Дата' не найдена в файле.")
+
+    st.markdown("---")
+    
+    # Работа ИИ
     if model:
         query = st.text_input("🤖 Спросить ИИ-агента:")
         if query:
             try:
                 with st.spinner("Думаю..."):
-                    # Передаем краткую справку для ИИ
                     stats = f"Заказы: {df['Заказы (из ленты в API)'].sum()}, Сумма: {df['Сумма заказов (из ленты в API)'].sum()}"
                     resp = model.generate_content(f"Вопрос: {query}. Статистика: {stats}")
                     st.write(resp.text)
             except Exception as e:
-                st.error(f"Ошибка ИИ: {e}. Проверьте ваш API-ключ в Google AI Studio.")
+                st.error(f"Ошибка ИИ: {e}")
     else:
-        st.warning("⚠️ ИИ недоступен. Проверьте GOOGLE_API_KEY в настройках.")
+        st.warning("⚠️ ИИ недоступен. Проверьте GOOGLE_API_KEY в настройках Secrets.")
