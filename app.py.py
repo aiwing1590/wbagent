@@ -9,14 +9,12 @@ def get_model():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
-        # Используем более стабильную модель
         return genai.GenerativeModel('gemini-1.5-pro')
     except:
         return None
 
 model = get_model()
 
-# Функция проверки пароля
 def check_password():
     if st.session_state.get("password_correct", False): return True
     st.header("🔐 Вход")
@@ -38,27 +36,30 @@ uploaded_file = st.sidebar.file_uploader("Загрузите отчет", type=[
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    st.success("Данные загружены!")
     
-    # Основные метрики
+    # 1. Расчет чистой прибыли (Выручка - Штрафы - Реклама)
+    # Если каких-то колонок нет, они считаются за 0
+    rev = df['Сумма заказов (из ленты в API)'].sum()
+    shtraf = df['Штрафы'].sum() if 'Штрафы' in df.columns else 0
+    reklama = df['Реклама'].sum() if 'Реклама' in df.columns else 0
+    profit = rev - shtraf - reklama
+    
+    # 2. Метрики
     cols = st.columns(5)
     cols[0].metric("Заказы", f"{df['Заказы (из ленты в API)'].sum():,}")
-    cols[1].metric("Сумма", f"{df['Сумма заказов (из ленты в API)'].sum():,.0f} ₽")
-    cols[2].metric("Штрафы", f"{df['Штрафы'].sum() if 'Штрафы' in df.columns else 0:,.0f} ₽")
-    cols[3].metric("Реклама", f"{df['Реклама'].sum() if 'Реклама' in df.columns else 0:,.0f} ₽")
-    cols[4].metric("Возвраты", f"{df['Возвраты заказов'].sum() if 'Возвраты заказов' in df.columns else 0}")
+    cols[1].metric("Выручка", f"{rev:,.0f} ₽")
+    cols[2].metric("Чистая прибыль", f"{profit:,.0f} ₽")
+    cols[3].metric("Штрафы", f"{shtraf:,.0f} ₽")
+    cols[4].metric("Реклама", f"{reklama:,.0f} ₽")
     
-    st.markdown("---")
+    # 3. Лучший/Худший день (ищем по любой колонке, где есть дата или просто по строкам)
+    # Если в таблице нет даты, берем индекс строки как "день"
+    df['Чистая'] = df['Сумма заказов (из ленты в API)'] - (df['Штрафы'] if 'Штрафы' in df.columns else 0) - (df['Реклама'] if 'Реклама' in df.columns else 0)
     
-    # Аналитика по дням
-    st.markdown("### 📅 Анализ по дням")
-    if 'Дата' in df.columns:
-        daily_sales = df.groupby('Дата')['Сумма заказов (из ленты в API)'].sum()
-        col_a, col_b = st.columns(2)
-        col_a.metric("Лучший день", f"{daily_sales.max():,.0f} ₽", help=str(daily_sales.idxmax()))
-        col_b.metric("Худший день", f"{daily_sales.min():,.0f} ₽", help=str(daily_sales.idxmin()))
-    else:
-        st.info("Колонка 'Дата' не найдена в файле.")
+    st.markdown("### 📈 Анализ эффективности")
+    col_a, col_b = st.columns(2)
+    col_a.metric("Лучший день (по прибыли)", f"{df['Чистая'].max():,.0f} ₽")
+    col_b.metric("Худший день (по прибыли)", f"{df['Чистая'].min():,.0f} ₽")
 
     st.markdown("---")
     
@@ -66,12 +67,10 @@ if uploaded_file:
     if model:
         query = st.text_input("🤖 Спросить ИИ-агента:")
         if query:
-            try:
-                with st.spinner("Думаю..."):
-                    stats = f"Заказы: {df['Заказы (из ленты в API)'].sum()}, Сумма: {df['Сумма заказов (из ленты в API)'].sum()}"
-                    resp = model.generate_content(f"Вопрос: {query}. Статистика: {stats}")
-                    st.write(resp.text)
-            except Exception as e:
-                st.error(f"Ошибка ИИ: {e}")
+            with st.spinner("Думаю..."):
+                # Отправляем ИИ данные для анализа
+                summary = f"Общая выручка: {rev}, Штрафы: {shtraf}, Реклама: {reklama}, Прибыль: {profit}"
+                resp = model.generate_content(f"Вопрос: {query}. Краткая статистика: {summary}")
+                st.write(resp.text)
     else:
-        st.warning("⚠️ ИИ недоступен. Проверьте GOOGLE_API_KEY в настройках Secrets.")
+        st.warning("⚠️ ИИ недоступен. Проверьте API-ключ в настройках.")
