@@ -4,7 +4,6 @@ import google.generativeai as genai
 
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
-# Инициализация ИИ
 def get_model():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -15,7 +14,6 @@ def get_model():
 
 model = get_model()
 
-# Вход
 if 'password_correct' not in st.session_state: st.session_state.password_correct = False
 if not st.session_state.password_correct:
     st.header("🔐 Вход")
@@ -32,12 +30,15 @@ if file:
     
     # Расходы
     expenses_cols = ['Комиссия', 'Эквайринг', 'Логистика', 'Хранение', 'Платная приемка', 'Продвижение', 'Штрафы', 'Себестоимость']
+    returns_cols = ['Возвраты', 'Сумма возвратов'] # Предполагаемые названия колонок
     
     # Считаем суммы
     rev = df['Сумма заказов (из ленты в API)'].fillna(0).sum()
     sums = {col: df[col].fillna(0).abs().sum() if col in df.columns else 0 for col in expenses_cols}
+    ret_count = df['Возвраты'].fillna(0).sum() if 'Возвраты' in df.columns else 0
+    ret_sum = df['Сумма возвратов'].fillna(0).sum() if 'Сумма возвратов' in df.columns else 0
     
-    # ЧИСТАЯ ПРИБЫЛЬ = Выручка минус все расходы
+    # Прибыль
     net_profit = rev - sum(sums.values())
     
     # 1. МЕТРИКИ
@@ -45,16 +46,10 @@ if file:
     cols1 = st.columns(4)
     cols1[0].metric("Выручка", f"{rev:,.0f} ₽")
     cols1[1].metric("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽")
-    cols1[2].metric("Себестоимость", f"{sums['Себестоимость']:,.0f} ₽")
-    cols1[3].metric("Комиссия", f"{sums['Комиссия']:,.0f} ₽")
+    cols1[2].metric("Возвраты (кол-во)", f"{int(ret_count)}")
+    cols1[3].metric("Сумма возвратов", f"{ret_sum:,.0f} ₽")
     
-    cols2 = st.columns(4)
-    cols2[0].metric("Логистика", f"{sums['Логистика']:,.0f} ₽")
-    cols2[1].metric("Продвижение", f"{sums['Продвижение']:,.0f} ₽")
-    cols2[2].metric("Эквайринг", f"{sums['Эквайринг']:,.0f} ₽")
-    cols2[3].metric("Штрафы", f"{sums['Штрафы']:,.0f} ₽")
-
-    # 2. АНАЛИЗ (Товары + Лучший/Худший день)
+    # 2. АНАЛИЗ ТОВАРОВ
     df['Чистая'] = df['Сумма заказов (из ленты в API)'].fillna(0)
     for col in expenses_cols:
         if col in df.columns:
@@ -62,22 +57,21 @@ if file:
             
     st.subheader("📦 Анализ эффективности")
     
-    # Товары
-    best_item = df.loc[df['Чистая'].idxmax()]
-    worst_item = df.loc[df['Чистая'].idxmin()]
+    best = df.loc[df['Чистая'].idxmax()]
+    worst = df.loc[df['Чистая'].idxmin()]
     
-    # Дни (если есть дата)
-    date_col = 'Дата' if 'Дата' in df.columns else None
-    best_day = best_item[date_col] if date_col else "—"
-    worst_day = worst_item[date_col] if date_col else "—"
+    # Получаем продажи товара (предполагаем, что колонка называется 'Заказы (из ленты в API)')
+    best_sales = best.get('Заказы (из ленты в API)', 0)
+    worst_sales = worst.get('Заказы (из ленты в API)', 0)
     
     col_a, col_b = st.columns(2)
-    col_a.metric("Лучший товар", str(best_item['Наименование'])[:20]+"...", f"{best_item['Чистая']:,.0f} ₽")
-    col_b.metric("Лучший день", f"{best_day}", f"{best_item['Чистая']:,.0f} ₽")
+    # Выводим без цифр в дельтах (поставил None)
+    col_a.metric("Лучший товар", str(best['Наименование'])[:25]+"...", f"Продаж: {best_sales}", delta=None)
+    col_b.metric("Лучший день", f"{best.get('Дата', '—')}", delta=None)
     
     col_c, col_d = st.columns(2)
-    col_c.metric("Худший товар", str(worst_item['Наименование'])[:20]+"...", f"{worst_item['Чистая']:,.0f} ₽")
-    col_d.metric("Худший день", f"{worst_day}", f"{worst_item['Чистая']:,.0f} ₽")
+    col_c.metric("Худший товар", str(worst['Наименование'])[:25]+"...", f"Продаж: {worst_sales}", delta=None)
+    col_d.metric("Худший день", f"{worst.get('Дата', '—')}", delta=None)
 
     # ИИ
     st.markdown("---")
@@ -85,5 +79,5 @@ if file:
         query = st.text_input("🤖 Спросить ИИ-агента:")
         if query:
             with st.spinner("Анализирую..."):
-                resp = model.generate_content(f"Вопрос: {query}. Данные: Прибыль {net_profit}, Лучший товар {best_item['Наименование']}")
+                resp = model.generate_content(f"Вопрос: {query}. Прибыль: {net_profit}")
                 st.write(resp.text)
