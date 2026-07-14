@@ -9,11 +9,11 @@ def get_model():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-1.5-pro')
+        return True
     except:
-        return None
+        return False
 
-model = get_model()
+model_configured = get_model()
 
 # Авторизация
 if 'password_correct' not in st.session_state: st.session_state.password_correct = False
@@ -171,7 +171,7 @@ if file:
 
     # --- БЛОК ИСКУССТВЕННОГО ИНТЕЛЛЕКТА ---
     st.markdown("---")
-    if model:
+    if model_configured:
         query = st.text_input("🤖 Спросить ИИ-агента по этому отчету:")
         if query:
             with st.spinner("ИИ анализирует структуру и показатели отчета..."):
@@ -180,5 +180,22 @@ if file:
                 for k, v in discovered_expenses.items():
                     ai_context += f"Расход {k}={v}. "
                 
-                resp = model.generate_content(f"Вопрос пользователя: {query}. Контекст по файлу: {ai_context}")
-                st.write(resp.text)
+                # Поочередно пробуем запустить ИИ на доступных моделях, чтобы избежать 404 ошибки
+                models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-2.5-flash']
+                resp_text = None
+                last_err = None
+                
+                for m_name in models_to_try:
+                    try:
+                        temp_model = genai.GenerativeModel(m_name)
+                        resp = temp_model.generate_content(f"Вопрос пользователя: {query}. Контекст по файлу: {ai_context}")
+                        resp_text = resp.text
+                        break  # Если всё прошло успешно, выходим из цикла
+                    except Exception as e:
+                        last_err = e
+                        continue  # Если упало с ошибкой, пробуем следующую модель
+                
+                if resp_text:
+                    st.write(resp_text)
+                else:
+                    st.error(f"Не удалось связаться с ИИ. Ошибка: {last_err}")
