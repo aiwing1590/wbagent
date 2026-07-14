@@ -180,22 +180,35 @@ if file:
                 for k, v in discovered_expenses.items():
                     ai_context += f"Расход {k}={v}. "
                 
-                # Поочередно пробуем запустить ИИ на доступных моделях, чтобы избежать 404 ошибки
-                models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-2.5-flash']
-                resp_text = None
-                last_err = None
+                # Попробуем динамически запросить список доступных моделей у Google API
+                available_models = []
+                try:
+                    for m in genai.list_models():
+                        if 'generateContent' in m.supported_generation_methods:
+                            available_models.append(m.name)
+                except Exception:
+                    pass
                 
-                for m_name in models_to_try:
+                # Если список получить не удалось, используем только официальные стандартные модели
+                if not available_models:
+                    available_models = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+                
+                resp_text = None
+                errors_log = []
+                
+                for m_name in available_models:
                     try:
                         temp_model = genai.GenerativeModel(m_name)
                         resp = temp_model.generate_content(f"Вопрос пользователя: {query}. Контекст по файлу: {ai_context}")
                         resp_text = resp.text
-                        break  # Если всё прошло успешно, выходим из цикла
+                        break  # Успешно выполнили запрос — выходим из цикла
                     except Exception as e:
-                        last_err = e
-                        continue  # Если упало с ошибкой, пробуем следующую модель
+                        errors_log.append(f"{m_name}: {str(e)}")
+                        continue
                 
                 if resp_text:
                     st.write(resp_text)
                 else:
-                    st.error(f"Не удалось связаться с ИИ. Ошибка: {last_err}")
+                    st.error("Не удалось связаться с ИИ. Лог ошибок по моделям:")
+                    for err in errors_log:
+                        st.write(f"❌ {err}")
