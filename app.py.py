@@ -5,17 +5,17 @@ import google.generativeai as genai
 st.set_page_config(page_title="WB AI Agent Analyzer", layout="wide")
 
 # Инициализация ИИ
-def setup_ai():
+def get_model():
     try:
-        # Пытаемся получить ключ из секретов Streamlit
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-1.5-flash'), True
-    except Exception as e:
-        return None, False
+        return genai.GenerativeModel('gemini-1.5-flash')
+    except:
+        return None
 
-model, ai_available = setup_ai()
+model = get_model()
 
+# Функция проверки пароля
 def check_password():
     if st.session_state.get("password_correct", False): return True
     st.header("🔐 Вход")
@@ -39,26 +39,26 @@ if uploaded_file:
     df = pd.read_excel(uploaded_file)
     st.success("Данные загружены!")
     
-    # Расширенные метрики
-    cols = st.columns(4)
-    cols[0].metric("Заказы (шт)", f"{df['Заказы (из ленты в API)'].sum():,}")
+    # Метрики
+    cols = st.columns(5)
+    cols[0].metric("Заказы", f"{df['Заказы (из ленты в API)'].sum():,}")
     cols[1].metric("Сумма", f"{df['Сумма заказов (из ленты в API)'].sum():,.0f} ₽")
-    
-    # Проверяем наличие колонок перед выводом
-    val_rev = df['Валовая выручка'].sum() if 'Валовая выручка' in df.columns else 0
-    returns = df['Возвраты заказов'].sum() if 'Возвраты заказов' in df.columns else 0
-    
-    cols[2].metric("Валовая выручка", f"{val_rev:,.0f} ₽")
-    cols[3].metric("Возвраты", f"{returns:,} шт.")
+    cols[2].metric("Штрафы", f"{df['Штрафы'].sum() if 'Штрафы' in df.columns else 0:,.0f} ₽")
+    cols[3].metric("Реклама", f"{df['Реклама'].sum() if 'Реклама' in df.columns else 0:,.0f} ₽")
+    cols[4].metric("Возвраты", f"{df['Возвраты заказов'].sum() if 'Возвраты заказов' in df.columns else 0}")
     
     st.markdown("---")
     
-    if ai_available:
+    if model:
         query = st.text_input("🤖 Спросить ИИ-агента:")
         if query:
-            with st.spinner("Думаю..."):
-                prompt = f"Вопрос: {query}. Данные: Заказов {df['Заказы (из ленты в API)'].sum()}, Сумма {df['Сумма заказов (из ленты в API)'].sum()}"
-                resp = model.generate_content(prompt)
-                st.write(resp.text)
+            try:
+                with st.spinner("Думаю..."):
+                    # Передаем краткую справку для ИИ
+                    stats = f"Заказы: {df['Заказы (из ленты в API)'].sum()}, Сумма: {df['Сумма заказов (из ленты в API)'].sum()}"
+                    resp = model.generate_content(f"Вопрос: {query}. Статистика: {stats}")
+                    st.write(resp.text)
+            except Exception as e:
+                st.error(f"Ошибка ИИ: {e}. Проверьте ваш API-ключ в Google AI Studio.")
     else:
-        st.warning("⚠️ ИИ недоступен. Проверьте ключ GOOGLE_API_KEY в настройках Secrets.")
+        st.warning("⚠️ ИИ недоступен. Проверьте GOOGLE_API_KEY в настройках.")
