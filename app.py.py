@@ -30,41 +30,35 @@ file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
 if file:
     df = pd.read_excel(file)
     
-    # Расчеты по колонкам
+    # Расчет чистой прибыли для каждой строки
+    # (Выручка - все расходы)
+    df['Чистая'] = df['Сумма заказов (из ленты в API)'] - (
+        df['Продвижение'].abs() + df['Эквайринг'].abs() + 
+        df['Логистика'].abs() + df['Штрафы'].abs() + df['Комиссия'].abs()
+    )
+    
+    # Основные показатели
     rev = df['Сумма заказов (из ленты в API)'].sum()
-    promo = df['Продвижение'].sum()
-    acquiring = df['Эквайринг'].sum()
-    logistics = df['Логистика'].sum()
-    penalties = df['Штрафы'].sum()
-    commission = df['Комиссия'].sum()
+    net_profit = df['Чистая'].sum()
     
-    # Чистая прибыль = Выручка - расходы
-    net_profit = rev - (promo + abs(acquiring) + abs(logistics) + abs(penalties) + abs(commission))
-    
-    # Метрики
     cols = st.columns(4)
     cols[0].metric("Выручка", f"{rev:,.0f} ₽")
     cols[1].metric("Прибыль", f"{net_profit:,.0f} ₽")
-    cols[2].metric("Логистика", f"{abs(logistics):,.0f} ₽")
-    cols[3].metric("Продвижение", f"{abs(promo):,.0f} ₽")
-    
-    cols2 = st.columns(3)
-    cols2[0].metric("Эквайринг", f"{abs(acquiring):,.0f} ₽")
-    cols2[1].metric("Штрафы", f"{abs(penalties):,.0f} ₽")
-    cols2[2].metric("Комиссия", f"{abs(commission):,.0f} ₽")
+    cols[2].metric("Заказы", f"{df['Заказы (из ленты в API)'].sum():,}")
+    cols[3].metric("Всего товаров", f"{len(df)}")
 
-    # Лучший/Худший день (по каждой записи)
-    df['Чистая'] = df['Сумма заказов (из ленты в API)'] - (df['Продвижение'] + abs(df['Эквайринг']) + abs(df['Логистика']) + abs(df['Штрафы']) + abs(df['Комиссия']))
-    df['День'] = range(1, len(df) + 1)
-    
+    # Аналитика: что показывать (Дату или Наименование товара)
     st.markdown("### 📈 Анализ эффективности")
     col_a, col_b = st.columns(2)
+    
+    # Если есть Дата — берем её, если нет — берем Наименование
+    target_col = 'Дата' if 'Дата' in df.columns else 'Наименование'
     
     best = df.loc[df['Чистая'].idxmax()]
     worst = df.loc[df['Чистая'].idxmin()]
     
-    col_a.metric("Лучший день (запись №)", f"{int(best['День'])}", f"{best['Чистая']:,.0f} ₽")
-    col_b.metric("Худший день (запись №)", f"{int(worst['День'])}", f"{worst['Чистая']:,.0f} ₽")
+    col_a.metric(f"Лучший ({target_col})", f"{best[target_col]}", f"{best['Чистая']:,.0f} ₽")
+    col_b.metric(f"Худший ({target_col})", f"{worst[target_col]}", f"{worst['Чистая']:,.0f} ₽")
 
     # ИИ
     st.markdown("---")
@@ -72,8 +66,8 @@ if file:
         query = st.text_input("🤖 Спросить ИИ:")
         if query:
             with st.spinner("Анализирую..."):
-                stats = f"Выручка: {rev}, Прибыль: {net_profit}, Расходы: Продвижение {promo}, Эквайринг {acquiring}, Логистика {logistics}"
+                stats = f"Общая прибыль: {net_profit}, Лучший товар: {best['Наименование']}, Худший: {worst['Наименование']}"
                 resp = model.generate_content(f"Вопрос: {query}. Данные: {stats}")
                 st.write(resp.text)
     else:
-        st.error("Ошибка ИИ: Проверьте API-ключ в Secrets.")
+        st.error("Ошибка ИИ: Проверьте API-ключ в Settings.")
