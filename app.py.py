@@ -180,6 +180,9 @@ if file:
                 for k, v in discovered_expenses.items():
                     ai_context += f"Расход {k}={v}. "
                 
+                # Добавляем список реальных колонок файла, чтобы ИИ знал структуру
+                ai_context += f"Доступные колонки в загруженном файле: {list(df.columns)}. "
+                
                 # Попробуем динамически запросить список доступных моделей у Google API
                 available_models = []
                 try:
@@ -189,19 +192,27 @@ if file:
                 except Exception:
                     pass
                 
-                # Если список получить не удалось, используем только официальные стандартные модели
                 if not available_models:
                     available_models = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
                 
                 resp_text = None
                 errors_log = []
                 
+                # Формируем жесткую инструкцию, чтобы ИИ давал только прямой ответ без мусора
+                prompt = (
+                    f"Ты профессиональный ИИ-аналитик маркетплейса WB. Ответь на вопрос пользователя КРАТКО, СТРОГО ПО ДЕЛУ и только на русском языке.\n"
+                    f"Выведи только чистый, финальный ответ для человека. НЕ используй никаких шаблонов, заголовков вроде 'User Question:', 'Direct Answer:', 'Reasoning:' или технических тегов.\n\n"
+                    f"Контекст по файлу: {ai_context}\n"
+                    f"Вопрос пользователя: {query}\n"
+                    f"Ответ:"
+                )
+                
                 for m_name in available_models:
                     try:
                         temp_model = genai.GenerativeModel(m_name)
-                        resp = temp_model.generate_content(f"Вопрос пользователя: {query}. Контекст по файлу: {ai_context}")
+                        resp = temp_model.generate_content(prompt)
                         resp_text = resp.text
-                        break  # Успешно выполнили запрос — выходим из цикла
+                        break
                     except Exception as e:
                         errors_log.append(f"{m_name}: {str(e)}")
                         continue
