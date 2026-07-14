@@ -211,6 +211,63 @@ if file:
                 if resp_text:
                     st.write(resp_text)
                 else:
-                    st.error("Не удалось связаться с ИИ. Лог ошибок по моделям:")
-                    for err in errors_log:
-                        st.write(f"❌ {err}")
+                    # --- ПЫТАЕМСЯ ОТВЕТИТЬ ЛОКАЛЬНО ПРИ ОШИБКЕ API ---
+                    import re
+                    fallback_text = None
+                    q = query.lower().strip()
+                    
+                    # 1. Поиск по конкретным товарам (например, "рукомойники")
+                    name_col = found_cols.get('product_name')
+                    rev_col = found_cols.get('revenue')
+                    if name_col and rev_col:
+                        # Стоп-слова, которые убираем из запроса, чтобы вычленить название товара
+                        stop_words = {
+                            'сколько', 'принесли', 'принес', 'продали', 'купили', 'нашли', 'товар', 
+                            'товары', 'по', 'за', 'в', 'и', 'для', 'с', 'на', 'выручка', 'прибыль', 'продажи'
+                        }
+                        words = [re.sub(r'[^\w\s]', '', w) for w in q.split()]
+                        search_terms = [w for w in words if w and w not in stop_words and len(w) > 2]
+                        
+                        if search_terms:
+                            mask = pd.Series([False] * len(df))
+                            for term in search_terms:
+                                # Простое усечение окончания для базового поиска на русском (рукомойники -> рукомойник)
+                                stem = term[:-1] if len(term) > 4 else term
+                                mask = mask | df[name_col].astype(str).str.lower().str.contains(stem, na=False)
+                            
+                            matched_df = df[mask]
+                            if not matched_df.empty:
+                                matched_names = matched_df[name_col].unique()
+                                item_revenue = matched_df[rev_col].fillna(0).sum()
+                                item_net = matched_df['Row_Net'].fillna(0).sum() if 'Row_Net' in matched_df.columns else item_revenue
+                                item_count = len(matched_df)
+                                
+                                names_str = ", ".join([str(n) for n in matched_names[:3]])
+                                if len(matched_names) > 3:
+                                    names_str += f" и еще {len(matched_names) - 3} шт."
+                                    
+                                fallback_text = (
+                                    f"🔍 **Результат локального анализа (так как Google API временно недоступен):**\n\n"
+                                    f"Найденные товары: **{names_str}**\n"
+                                    f"* **Количество продаж (строк):** {item_count} шт.\n"
+                                    f"* **Выручка (сумма продаж):** {item_revenue:,.0f} ₽\n"
+                                    f"* **Чистая прибыль (с учетом расходов):** {item_net:,.0f} ₽"
+                                )
+                    
+                    # 2. Поиск по общим метрикам отчета, если по товарам не совпало
+                    if not fallback_text:
+                        if any(w in q for w in ['выручк', 'оборот', 'всего продали']):
+                            fallback_text = f"📊 **Локальный результат:** Общая выручка по всему отчету составляет **{total_revenue:,.0f} ₽**."
+                        elif any(w in q for w in ['чистая прибыль', 'прибыль', 'заработал']):
+                            fallback_text = f"📊 **Локальный результат:** Общая чистая прибыль по отчету составляет **{net_profit:,.0f} ₽**."
+                    
+                    if fallback_text:
+                        st.markdown(fallback_text)
+                        st.warning("⚠️ **Внимание:** Этот ответ рассчитан локальным кодом без участия ИИ, так как ваш API-ключ заблокирован со стороны Google (ошибка лимита 'limit: 0'). Как только вы обновите API-ключ в secrets, ИИ снова заработает на полную мощность.")
+                        with st.expander("Посмотреть технический лог ошибок API"):
+                            for err in errors_log:
+                                st.write(f"❌ {err}")
+                    else:
+                        st.error("Не удалось связаться с ИИ и не удалось найти совпадений локально. Лог ошибок по моделям:")
+                        for err in errors_log:
+                            st.write(f"❌ {err}")
