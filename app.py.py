@@ -6,9 +6,14 @@ import re
 # Настройка страницы
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
-# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + все анимации) ---
+# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + Шрифты Apple + Анимации) ---
 st.markdown("""
     <style>
+    /* Глобальный шрифт Apple для всех элементов интерфейса */
+    html, body, .stApp, h1, h2, h3, p, span, button, input, label, div {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+    }
+
     /* Основной фон приложения и тексты */
     .stApp {
         background-color: #0d0e15;
@@ -17,13 +22,15 @@ st.markdown("""
     
     /* Стилизация вкладок (Tabs) */
     button[data-baseweb="tab"] {
-        font-size: 16px !important;
-        font-weight: 600 !important;
+        font-size: 15px !important;
+        font-weight: 500 !important;
+        letter-spacing: -0.2px !important;
         color: #a0aec0 !important;
         border-bottom: 2px solid transparent !important;
     }
     button[data-baseweb="tab"][aria-selected="true"] {
         color: #bc7af9 !important;
+        font-weight: 600 !important;
         border-bottom: 2px solid #bc7af9 !important;
     }
     
@@ -41,17 +48,19 @@ st.markdown("""
         border-color: #bc7af9;
     }
     
-    /* Подсветка цифр метрик */
+    /* Подсветка цифр метрик (в стиле Apple — плотные, аккуратные) */
     div[data-testid="stMetricValue"] {
         color: #bc7af9 !important;
         font-size: 26px !important;
         font-weight: 700 !important;
+        letter-spacing: -0.5px !important;
     }
     
     /* Текст ярлыков метрик */
     div[data-testid="stMetricLabel"] {
         color: #94a3b8 !important;
-        font-size: 13px !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
@@ -96,7 +105,7 @@ st.markdown("""
     }
     .loader-text {
         color: #bc7af9;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
         letter-spacing: 1px;
         text-transform: uppercase;
@@ -131,18 +140,15 @@ st.markdown("""
         filter: drop-shadow(0 0 15px #bc7af9);
     }
     @keyframes key-float {
-        0% {
-            transform: translateY(0px) rotate(-10deg);
-        }
-        100% {
-            transform: translateY(-20px) rotate(10deg);
-        }
+        0% { transform: translateY(0px) rotate(-10deg); }
+        100% { transform: translateY(-20px) rotate(10deg); }
     }
     
     .login-title {
         color: #ffffff !important;
-        font-size: 30px !important;
-        font-weight: 800 !important;
+        font-size: 32px !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.5px !important;
         margin-bottom: 5px !important;
         background: linear-gradient(45deg, #ffffff, #bc7af9);
         -webkit-background-clip: text;
@@ -151,27 +157,29 @@ st.markdown("""
     .login-subtitle {
         color: #94a3b8 !important;
         font-size: 14px !important;
+        font-weight: 400 !important;
         margin-bottom: 30px !important;
     }
     
-    /* Кастомная красивая строчка ввода пароля */
+    /* Красивая строчка ввода пароля в стиле Apple-интерфейсов */
     div[data-testid="stTextInput"] input {
         background-color: #0d0e15 !important;
         border: 2px solid #2d3142 !important;
         color: #ffffff !important;
         text-align: center !important;
-        font-size: 18px !important;
+        font-size: 20px !important;
+        font-weight: 600 !important;
         border-radius: 12px !important;
         padding: 14px !important;
-        letter-spacing: 4px !important;
-        transition: all 0.3s ease-in-out !important;
+        letter-spacing: 6px !important;
+        transition: all 0.25s ease-in-out !important;
     }
     div[data-testid="stTextInput"] input:focus {
         border-color: #bc7af9 !important;
-        box-shadow: 0 0 15px rgba(188, 122, 249, 0.4) !important;
+        box-shadow: 0 0 15px rgba(188, 122, 249, 0.35) !important;
     }
     div[data-testid="stTextInput"] label {
-        display: none !important; /* Прячем дефолтную надпись Streamlit над инпутом */
+        display: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -187,7 +195,7 @@ def get_model():
 
 model_configured = get_model()
 
-# --- КРАСИВАЯ АВТОРИЗАЦИЯ ПО ЦЕНТРУ ---
+# --- АВТОРИЗАЦИЯ ПО ЦЕНТРУ ---
 if 'password_correct' not in st.session_state: 
     st.session_state.password_correct = False
 
@@ -202,19 +210,18 @@ if not st.session_state.password_correct:
             </div>
         """, unsafe_allow_html=True)
         
-        # Инпут теперь стилизован через CSS, без стандартной подписи сверху
         password = st.text_input("Пароль доступа", type="password", placeholder="••••••")
         
         if password == "wb140":
             st.session_state.password_correct = True
             st.rerun()
         elif password:
-            st.markdown("<p style='color: #ef4444; text-align: center; margin-top: 15px; font-weight: bold;'>❌ Неверный пароль. Попробуйте еще раз.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #ef4444; text-align: center; margin-top: 15px; font-weight: 600; font-size: 14px;'>❌ Неверный пароль. Попробуйте еще раз.</p>", unsafe_allow_html=True)
     st.stop()
 
-# --- ГЛАВНЫЙ ЭКРАН ПРИЛОЖЕНИЯ (Отображается после успешного ввода пароля) ---
-st.markdown("<h1 style='color: #ffffff; margin-bottom: 0px;'>📊 ИИ-Аналитик WB <span style='color: #bc7af9; font-size: 20px;'>PRO Edition</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='color: #94a3b8; margin-top: 0px;'>Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
+# --- ГЛАВНЫЙ ЭКРАН ПРИЛОЖЕНИЯ ---
+st.markdown("<h1 style='color: #ffffff; margin-bottom: 0px; font-weight: 700; letter-spacing: -0.5px;'>📊 ИИ-Аналитик WB <span style='color: #bc7af9; font-size: 18px; font-weight: 500; letter-spacing: 0px;'>PRO Edition</span></h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #94a3b8; margin-top: 5px; font-size: 15px;'>Загрузите финансовый отчет WB для мгновенного аудита</p>", unsafe_allow_html=True)
 
 file = st.sidebar.file_uploader("📂 Загрузите отчет (.xlsx)", type=["xlsx"])
 
@@ -256,13 +263,12 @@ if file:
         else:
             found_cols[key] = detect_column(key)
 
-    # --- СБОР И РАСЧЕТ ДАННЫХ ---
+    # Расчеты
     rev_col = found_cols['revenue']
     total_revenue = df[rev_col].fillna(0).sum() if rev_col else 0
 
     discovered_expenses = {}
     expense_keys = ['logistics', 'commission', 'cost', 'promo', 'storage', 'acceptance', 'fines']
-    
     for k in expense_keys:
         col_name = found_cols[k]
         if col_name:
@@ -288,23 +294,18 @@ if file:
         if c_name:
             df['Row_Net'] = df['Row_Net'] - df[c_name].fillna(0).abs()
 
-    # --- ТАБЫ (ВКЛАДКИ) ---
+    # Табы
     tab_fin, tab_analyt, tab_ai = st.tabs(["💰 Финансовый дашборд", "📦 Аналитика по товарам", "🤖 ИИ-Ассистент"])
 
-    # ==================== ВКЛАДКА 1: ФИНАНСЫ ====================
+    # ==================== ВКЛАДКА 1 ====================
     with tab_fin:
-        st.markdown("<h3 style='color: #ffffff;'>📈 Главные метрики</h3>", unsafe_allow_html=True)
-        
+        st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>📈 Главные метрики</h3>", unsafe_allow_html=True)
         main_metrics = []
-        if rev_col: 
-            main_metrics.append(("Выручка", f"{total_revenue:,.0f} ₽"))
+        if rev_col: main_metrics.append(("Выручка", f"{total_revenue:,.0f} ₽"))
         main_metrics.append(("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽"))
-        if orders_val > 0: 
-            main_metrics.append(("Заказов", f"{int(orders_val)} шт"))
-        if returns_cnt_val > 0: 
-            main_metrics.append(("Возвраты", f"{int(returns_cnt_val)} шт"))
-        if returns_sum_val > 0: 
-            main_metrics.append(("Сумма возвратов", f"{returns_sum_val:,.0f} ₽"))
+        if orders_val > 0: main_metrics.append(("Заказов", f"{int(orders_val)} шт"))
+        if returns_cnt_val > 0: main_metrics.append(("Возвраты", f"{int(returns_cnt_val)} шт"))
+        if returns_sum_val > 0: main_metrics.append(("Сумма возвратов", f"{returns_sum_val:,.0f} ₽"))
 
         if main_metrics:
             cols_main = st.columns(len(main_metrics))
@@ -312,11 +313,10 @@ if file:
                 cols_main[idx].metric(label, val)
 
         if discovered_expenses:
-            st.markdown("<br><h3 style='color: #ffffff;'>💸 Расшифровка расходов</h3>", unsafe_allow_html=True)
+            st.markdown("<br><h3 style='color: #ffffff; font-weight: 600;'>💸 Расшифровка расходов</h3>", unsafe_allow_html=True)
             expense_labels = {
                 'logistics': 'Логистика', 'commission': 'Комиссия', 'cost': 'Себестоимость',
-                'promo': 'Реклама/Продвижение', 'storage': 'Хранение', 'acceptance': 'Приемка',
-                'fines': 'Штрафы'
+                'promo': 'Реклама', 'storage': 'Хранение', 'acceptance': 'Приемка', 'fines': 'Штрафы'
             }
             exp_items = list(discovered_expenses.items())
             chunk_size = 4
@@ -326,13 +326,13 @@ if file:
                 for idx, (k, val) in enumerate(chunk):
                     cols_exp[idx].metric(expense_labels[k], f"{val:,.0f} ₽")
 
-    # ==================== ВКЛАДКА 2: АНАЛИТИКА ====================
+    # ==================== ВКЛАДКА 2 ====================
     with tab_analyt:
         name_col = found_cols['product_name']
         date_col = found_cols['date']
 
         if rev_col and (name_col or date_col):
-            st.markdown("<h3 style='color: #ffffff;'>🎯 Эффективность продаж</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>🎯 Эффективность продаж</h3>", unsafe_allow_html=True)
             col_left, col_right = st.columns(2)
 
             if name_col:
@@ -342,50 +342,41 @@ if file:
                 
                 with col_left:
                     with st.container(border=True):
-                        st.markdown("<p style='color: #10b981; font-weight: bold; font-size: 16px;'>📈 Самый прибыльный товар</p>", unsafe_allow_html=True)
+                        st.markdown("<p style='color: #10b981; font-weight: 600; font-size: 15px; margin-bottom: 5px;'>📈 Самый прибыльный товар</p>", unsafe_allow_html=True)
                         st.write(f"**{best_prod}**")
                         st.metric("Чистая прибыль", f"{product_grouped[best_prod]:,.0f} ₽")
-                    
                     st.markdown("<br>", unsafe_allow_html=True)
-                    
                     with st.container(border=True):
-                        st.markdown("<p style='color: #ef4444; font-weight: bold; font-size: 16px;'>📉 Самый убыточный товар</p>", unsafe_allow_html=True)
+                        st.markdown("<p style='color: #ef4444; font-weight: 600; font-size: 15px; margin-bottom: 5px;'>📉 Самый убыточный товар</p>", unsafe_allow_html=True)
                         st.write(f"**{worst_prod}**")
                         st.metric("Убыток / Прибыль", f"{product_grouped[worst_prod]:,.0f} ₽")
 
             if date_col:
                 df['Clean_Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.strftime('%Y-%m-%d')
                 date_grouped = df.groupby('Clean_Date')['Row_Net'].sum()
-                
                 if not date_grouped.empty:
                     best_day = date_grouped.idxmax()
                     worst_day = date_grouped.idxmin()
-                    
                     with col_right:
                         with st.container(border=True):
-                            st.markdown("<p style='color: #10b981; font-weight: bold; font-size: 16px;'>📅 Лучший день по продажам</p>", unsafe_allow_html=True)
+                            st.markdown("<p style='color: #10b981; font-weight: 600; font-size: 15px; margin-bottom: 5px;'>📅 Лучший день по продажам</p>", unsafe_allow_html=True)
                             st.write(f"**Дата: {best_day}**")
                             st.metric("Заработано", f"{date_grouped[best_day]:,.0f} ₽")
-                        
                         st.markdown("<br>", unsafe_allow_html=True)
-                        
                         with st.container(border=True):
-                            st.markdown("<p style='color: #ef4444; font-weight: bold; font-size: 16px;'>📅 Худший день по продажам</p>", unsafe_allow_html=True)
+                            st.markdown("<p style='color: #ef4444; font-weight: 600; font-size: 15px; margin-bottom: 5px;'>📅 Худший день по продажам</p>", unsafe_allow_html=True)
                             st.write(f"**Дата: {worst_day}**")
                             st.metric("Заработано", f"{date_grouped[worst_day]:,.0f} ₽")
         else:
             st.info("В файле отсутствуют колонки даты или названия товара для глубокой аналитики.")
 
-    # ==================== ВКЛАДКА 3: ИИ И ПОИСК ====================
+    # ==================== ВКЛАДКА 3 ====================
     with tab_ai:
-        st.markdown("<h3 style='color: #ffffff;'>🤖 Быстрые вопросы по отчету</h3>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #94a3b8;'>Напишите свой вопрос (например: <i>'Рукомойники сколько принесли'</i>) — если API-ключ временно заблокирован, сработает мгновенный локальный поиск!</p>", unsafe_allow_html=True)
-        
+        st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>🤖 Быстрые вопросы по отчету</h3>", unsafe_allow_html=True)
         query = st.text_input("Задайте вопрос ИИ-агенту:", placeholder="Введите ваш запрос...")
         
         if query:
             loader_placeholder = st.empty()
-            
             loader_placeholder.markdown("""
                 <div class="loader-container">
                     <div class="loader-track">
@@ -398,7 +389,6 @@ if file:
             ai_context = f"Данные отчета: Выручка={total_revenue}, Чистая прибыль={net_profit}. "
             for k, v in discovered_expenses.items():
                 ai_context += f"Расход {k}={v}. "
-            
             ai_context += f"Доступные колонки: {list(df.columns)}. "
             
             models_to_try = ['gemini-2.0-flash', 'gemini-2.5-pro']
@@ -406,10 +396,10 @@ if file:
             errors_log = []
             
             prompt = (
-                f"Ты профессиональный ИИ-аналитик маркетплейса WB. Ответь на вопрос пользователя КРАТКО, СТРОГО ПО ДЕЛУ и только на русском языке.\n"
-                f"Выведи только чистый, финальный ответ для человека. НЕ используй никаких шаблонов, заголовков вроде 'User Question:', 'Direct Answer:', 'Reasoning:' или технических тегов.\n\n"
-                f"Контекст по файлу: {ai_context}\n"
-                f"Вопрос пользователя: {query}\n"
+                f"Ты профессиональный ИИ-аналитик маркетплейса WB. Ответь на вопрос пользователя КРАТКО, СТРОГО ПО ДЕЛУ.\n"
+                f"Выведи только чистый ответ. НЕ используй технические теги или вводные шаблоны.\n\n"
+                f"Контекст: {ai_context}\n"
+                f"Вопрос: {query}\n"
                 f"Ответ:"
             )
             
@@ -422,49 +412,22 @@ if file:
                         break
                     except Exception as e:
                         errors_log.append(f"{m_name}: {str(e)}")
-                        continue
             
             fallback_text = None
             if not resp_text:
                 q = query.lower().strip()
-                
                 search_cols = []
                 name_col_det = found_cols.get('product_name')
-                if name_col_det:
-                    search_cols.append(name_col_det)
-                
+                if name_col_det: search_cols.append(name_col_det)
                 for col in df.columns:
                     if df[col].dtype == 'object' or pd.api.types.is_string_dtype(df[col]):
-                        if col not in search_cols:
-                            search_cols.append(col)
+                        if col not in search_cols: search_cols.append(col)
                 
                 val_col = found_cols.get('revenue')
-                if not val_col:
-                    for col in df.columns:
-                        col_lower = str(col).lower()
-                        if any(syn in col_lower for syn in ['выручк', 'оплат', 'реализ', 'сумм', 'цена']):
-                            if pd.api.types.is_numeric_dtype(df[col]):
-                                val_col = col
-                                break
-                
                 if search_cols and val_col:
-                    stop_words = {
-                        'сколько', 'принесли', 'принес', 'продали', 'купили', 'нашли', 'товар', 
-                        'товары', 'по', 'за', 'в', 'и', 'для', 'с', 'на', 'выручка', 'прибыль', 'продажи'
-                    }
-                    
+                    stop_words = {'сколько', 'принесли', 'принес', 'продали', 'товар', 'выручка', 'прибыль'}
                     raw_words = q.split()
-                    search_terms = []
-                    for rw in raw_words:
-                        clean_word = re.sub(r'[^\w\s]', '', rw).lower()
-                        if clean_word and clean_word not in stop_words and len(clean_word) > 2:
-                            suffixes = ('и', 'ы', 'а', 'я', 'ов', 'ев', 'ам', 'ям', 'ами', 'ями', 'ах', 'ях', 'у', 'е', 'ом', 'ем')
-                            stemmed = clean_word
-                            for suff in sorted(suffixes, key=len, reverse=True):
-                                if clean_word.endswith(suff) and len(clean_word) - len(suff) > 3:
-                                    stemmed = clean_word[:-len(suff)]
-                                    break
-                            search_terms.append(stemmed)
+                    search_terms = [re.sub(r'[^\w\s]', '', rw).lower() for rw in raw_words if rw.lower() not in stop_words and len(rw) > 2]
                     
                     if search_terms:
                         mask = pd.Series([False] * len(df))
@@ -477,44 +440,22 @@ if file:
                         if not matched_df.empty:
                             display_col = name_col_det if name_col_det else search_cols[0]
                             matched_names = matched_df[display_col].unique()
-                            
                             item_revenue = matched_df[val_col].fillna(0).sum()
                             item_net = matched_df['Row_Net'].fillna(0).sum() if 'Row_Net' in matched_df.columns else item_revenue
-                            item_count = len(matched_df)
                             
-                            names_str = ", ".join([str(n) for n in matched_names[:3]])
-                            if len(matched_names) > 3:
-                                names_str += f" и еще {len(matched_names) - 3} шт."
-                                
                             fallback_text = (
-                                f"🔍 **Результат локального анализа (так как Google API временно недоступен):**\n\n"
-                                f"Найденные товары: **{names_str}** (колонка: *\"{display_col}\"*)\n"
-                                f"* **Количество продаж (строк):** {item_count} шт.\n"
-                                f"* **Выручка по найденным позициям:** {item_revenue:,.0f} ₽\n"
-                                f"* **Чистая прибыль по найденным позициям (с учетом расходов):** {item_net:,.0f} ₽"
+                                f"🔍 **Локальный анализ (API недоступен):**\n\n"
+                                f"Товары: **{', '.join([str(n) for n in matched_names[:3]])}**\n"
+                                f"* **Выручка:** {item_revenue:,.0f} ₽\n"
+                                f"* **Чистая прибыль:** {item_net:,.0f} ₽"
                             )
-                
-                if not fallback_text:
-                    if any(w in q for w in ['выручк', 'оборот', 'всего продали']):
-                        fallback_text = f"📊 **Локальный результат:** Общая выручка по всему отчету составляет **{total_revenue:,.0f} ₽**."
-                    elif any(w in q for w in ['чистая прибыль', 'прибыль', 'заработал']):
-                        fallback_text = f"📊 **Локальный результат:** Общая чистая прибыль по отчету составляет **{net_profit:,.0f} ₽**."
-
+            
             loader_placeholder.empty()
-
             if resp_text:
                 st.markdown("<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #bc7af9;'>", unsafe_allow_html=True)
                 st.write(resp_text)
                 st.markdown("</div>", unsafe_allow_html=True)
             elif fallback_text:
-                st.markdown(f"<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #eab308; margin-bottom: 15px;'>{fallback_text}</div>", unsafe_allow_html=True)
-                st.warning("⚠️ **Внимание:** Этот ответ рассчитан локальным кодом без участия ИИ, так как ваш API-ключ заблокирован со стороны Google. Как только вы обновите API-ключ в secrets, ИИ снова заработает на полную мощность.")
-                with st.expander("Посмотреть технический лог ошибок API"):
-                    for err in errors_log:
-                        st.write(f"❌ {err}")
-            else:
-                st.error("Не удалось связаться с ИИ и не удалось найти совпадений локально. Лог ошибок по моделям:")
-                for err in errors_log:
-                    st.write(f"❌ {err}")
+                st.markdown(f"<div style='background-color: #161925; padding: 20px; border-radius: 12px; border: 1px solid #eab308;'>{fallback_text}</div>", unsafe_allow_html=True)
 else:
     st.info("👈 Пожалуйста, загрузите ваш Excel-отчет Wildberries в боковое меню слева, чтобы начать анализ.")
