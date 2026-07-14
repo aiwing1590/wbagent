@@ -4,6 +4,7 @@ import google.generativeai as genai
 
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
+# Инициализация ИИ
 def get_model():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -14,6 +15,7 @@ def get_model():
 
 model = get_model()
 
+# Вход
 if 'password_correct' not in st.session_state: st.session_state.password_correct = False
 if not st.session_state.password_correct:
     st.header("🔐 Вход")
@@ -28,17 +30,16 @@ file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
 if file:
     df = pd.read_excel(file)
     
-    # Расходы
+    # Расходы и возвраты
     expenses_cols = ['Комиссия', 'Эквайринг', 'Логистика', 'Хранение', 'Платная приемка', 'Продвижение', 'Штрафы', 'Себестоимость']
-    returns_cols = ['Возвраты', 'Сумма возвратов'] # Предполагаемые названия колонок
     
-    # Считаем суммы
+    # Считаем показатели
     rev = df['Сумма заказов (из ленты в API)'].fillna(0).sum()
     sums = {col: df[col].fillna(0).abs().sum() if col in df.columns else 0 for col in expenses_cols}
     ret_count = df['Возвраты'].fillna(0).sum() if 'Возвраты' in df.columns else 0
     ret_sum = df['Сумма возвратов'].fillna(0).sum() if 'Сумма возвратов' in df.columns else 0
     
-    # Прибыль
+    # Чистая прибыль = Выручка минус все расходы
     net_profit = rev - sum(sums.values())
     
     # 1. МЕТРИКИ
@@ -60,18 +61,21 @@ if file:
     best = df.loc[df['Чистая'].idxmax()]
     worst = df.loc[df['Чистая'].idxmin()]
     
-    # Получаем продажи товара (предполагаем, что колонка называется 'Заказы (из ленты в API)')
-    best_sales = best.get('Заказы (из ленты в API)', 0)
-    worst_sales = worst.get('Заказы (из ленты в API)', 0)
+    # Данные для метрик
+    best_name = str(best.get('Наименование', 'Товар'))[:25] + "..."
+    best_sales_str = f"Продаж: {int(best.get('Заказы (из ленты в API)', 0))}"
     
+    worst_name = str(worst.get('Наименование', 'Товар'))[:25] + "..."
+    worst_sales_str = f"Продаж: {int(worst.get('Заказы (из ленты в API)', 0))}"
+    
+    # Вывод метрик без цветных стрелок (delta=None)
     col_a, col_b = st.columns(2)
-    # Выводим без цифр в дельтах (поставил None)
-    col_a.metric("Лучший товар", str(best['Наименование'])[:25]+"...", f"Продаж: {best_sales}", delta=None)
-    col_b.metric("Лучший день", f"{best.get('Дата', '—')}", delta=None)
+    col_a.metric("Лучший товар", best_name, best_sales_str, delta=None)
+    col_b.metric("Лучший день", str(best.get('Дата', '—')), delta=None)
     
     col_c, col_d = st.columns(2)
-    col_c.metric("Худший товар", str(worst['Наименование'])[:25]+"...", f"Продаж: {worst_sales}", delta=None)
-    col_d.metric("Худший день", f"{worst.get('Дата', '—')}", delta=None)
+    col_c.metric("Худший товар", worst_name, worst_sales_str, delta=None)
+    col_d.metric("Худший день", str(worst.get('Дата', '—')), delta=None)
 
     # ИИ
     st.markdown("---")
