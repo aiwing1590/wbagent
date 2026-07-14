@@ -33,7 +33,7 @@ if file:
     # Расходы
     expenses_cols = ['Комиссия', 'Эквайринг', 'Логистика', 'Хранение', 'Платная приемка', 'Продвижение', 'Штрафы', 'Себестоимость']
     
-    # Считаем показатели
+    # Расчет всех сумм с безопасным заполнением пустых значений
     rev = df['Сумма заказов (из ленты в API)'].fillna(0).sum()
     sums = {col: df[col].fillna(0).abs().sum() if col in df.columns else 0 for col in expenses_cols}
     ret_count = df['Возвраты'].fillna(0).sum() if 'Возвраты' in df.columns else 0
@@ -42,13 +42,22 @@ if file:
     # Чистая прибыль = Выручка минус все расходы
     net_profit = rev - sum(sums.values())
     
-    # 1. МЕТРИКИ
+    # 1. МЕТРИКИ (ДВЕ СТРОКИ)
     st.subheader("💰 Финансовые показатели")
+    
+    # Первая строка
     cols1 = st.columns(4)
     cols1[0].metric("Выручка", f"{rev:,.0f} ₽")
     cols1[1].metric("ЧИСТАЯ ПРИБЫЛЬ", f"{net_profit:,.0f} ₽")
     cols1[2].metric("Возвраты (кол-во)", f"{int(ret_count)}")
     cols1[3].metric("Сумма возвратов", f"{ret_sum:,.0f} ₽")
+    
+    # Вторая строка (все расходы)
+    cols2 = st.columns(4)
+    cols2[0].metric("Логистика", f"{sums['Логистика']:,.0f} ₽")
+    cols2[1].metric("Эквайринг", f"{sums['Эквайринг']:,.0f} ₽")
+    cols2[2].metric("Продвижение", f"{sums['Продвижение']:,.0f} ₽")
+    cols2[3].metric("Комиссия", f"{sums['Комиссия']:,.0f} ₽")
     
     # 2. АНАЛИЗ ТОВАРОВ
     df['Чистая'] = df['Сумма заказов (из ленты в API)'].fillna(0)
@@ -61,14 +70,12 @@ if file:
     best = df.loc[df['Чистая'].idxmax()]
     worst = df.loc[df['Чистая'].idxmin()]
     
-    # Подготовка данных (чистые строки)
     best_name = str(best.get('Наименование', 'Товар'))[:20]
     best_sales = int(best.get('Заказы (из ленты в API)', 0))
     
     worst_name = str(worst.get('Наименование', 'Товар'))[:20]
     worst_sales = int(worst.get('Заказы (из ленты в API)', 0))
     
-    # Вывод метрик (название в заголовке, продажи в значении)
     col_a, col_b = st.columns(2)
     col_a.metric(f"Лучший: {best_name}", f"Продаж: {best_sales}")
     col_b.metric("Лучший день", str(best.get('Дата', '—')))
