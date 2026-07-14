@@ -6,7 +6,7 @@ import re
 # Настройка страницы
 st.set_page_config(page_title="WB AI Agent", layout="wide")
 
-# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + Шрифты Apple + Анимации) ---
+# --- КАСТОМНЫЙ CSS СТИЛЬ (Фиолетовый WB-стиль + Шрифты Apple + Анимации + Gemini-поиск) ---
 st.markdown("""
     <style>
     /* Глобальный шрифт Apple для всех элементов интерфейса */
@@ -48,7 +48,7 @@ st.markdown("""
         border-color: #bc7af9;
     }
     
-    /* Подсветка цифр метрик (в стиле Apple — плотные, аккуратные) */
+    /* Подсветка цифр метрик (в стиле Apple) */
     div[data-testid="stMetricValue"] {
         color: #bc7af9 !important;
         font-size: 26px !important;
@@ -161,8 +161,13 @@ st.markdown("""
         margin-bottom: 30px !important;
     }
     
-    /* Красивая строчка ввода пароля в стиле Apple-интерфейсов */
-    div[data-testid="stTextInput"] input {
+    /* Скрываем стандартные надписи Streamlit над текстовыми инпутами */
+    div[data-testid="stTextInput"] label {
+        display: none !important;
+    }
+    
+    /* 1. Красивая строчка ввода ПАРОЛЯ */
+    div[data-testid="stTextInput"] input[type="password"] {
         background-color: #0d0e15 !important;
         border: 2px solid #2d3142 !important;
         color: #ffffff !important;
@@ -174,12 +179,34 @@ st.markdown("""
         letter-spacing: 6px !important;
         transition: all 0.25s ease-in-out !important;
     }
-    div[data-testid="stTextInput"] input:focus {
+    div[data-testid="stTextInput"] input[type="password"]:focus {
         border-color: #bc7af9 !important;
         box-shadow: 0 0 15px rgba(188, 122, 249, 0.35) !important;
     }
-    div[data-testid="stTextInput"] label {
-        display: none !important;
+    
+    /* 2. СТРОКА ПОИСКА В СТИЛЕ GOOGLE GEMINI */
+    div[data-testid="stTextInput"] input[type="text"] {
+        background-color: #161925 !important;
+        border: 1px solid #2d3142 !important;
+        color: #ffffff !important;
+        text-align: left !important;
+        font-size: 16px !important;
+        font-weight: 400 !important;
+        border-radius: 28px !important; /* Форма капсулы как у Gemini */
+        padding: 15px 24px !important; /* Большие просторные отступы */
+        letter-spacing: normal !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    div[data-testid="stTextInput"] input[type="text"]:focus {
+        border-color: #bc7af9 !important;
+        background-color: #1b1e2c !important;
+        box-shadow: 0 0 20px rgba(188, 122, 249, 0.25), 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+    }
+    /* Кастомизация цвета плейсхолдера */
+    div[data-testid="stTextInput"] input[type="text"]::placeholder {
+        color: #64748b !important;
+        opacity: 1;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -370,10 +397,12 @@ if file:
         else:
             st.info("В файле отсутствуют колонки даты или названия товара для глубокой аналитики.")
 
-    # ==================== ВКЛАДКА 3 ====================
+    # ==================== ВКЛАДКА 3 (ИИ И GEMINI-ПОИСК) ====================
     with tab_ai:
-        st.markdown("<h3 style='color: #ffffff; font-weight: 600;'>🤖 Быстрые вопросы по отчету</h3>", unsafe_allow_html=True)
-        query = st.text_input("Задайте вопрос ИИ-агенту:", placeholder="Введите ваш запрос...")
+        st.markdown("<h3 style='color: #ffffff; font-weight: 600; margin-bottom: 15px;'>🤖 Спросите ИИ-агента</h3>", unsafe_allow_html=True)
+        
+        # Строка поиска теперь выглядит как в Google Gemini
+        query = st.text_input("Задайте вопрос ИИ-агенту:", placeholder="Введите ваш запрос к отчету (например: Сколько принесла куртка?)...")
         
         if query:
             loader_placeholder = st.empty()
