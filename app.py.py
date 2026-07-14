@@ -30,35 +30,40 @@ file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
 if file:
     df = pd.read_excel(file)
     
-    # Расчет чистой прибыли для каждой строки
-    # (Выручка - все расходы)
-    df['Чистая'] = df['Сумма заказов (из ленты в API)'] - (
-        df['Продвижение'].abs() + df['Эквайринг'].abs() + 
-        df['Логистика'].abs() + df['Штрафы'].abs() + df['Комиссия'].abs()
-    )
-    
-    # Основные показатели
+    # 1. Расчеты для метрик
     rev = df['Сумма заказов (из ленты в API)'].sum()
-    net_profit = df['Чистая'].sum()
+    promo = df['Продвижение'].sum()
+    acquiring = df['Эквайринг'].sum()
+    logistics = df['Логистика'].sum()
+    penalties = df['Штрафы'].sum()
+    commission = df['Комиссия'].sum()
     
-    cols = st.columns(4)
-    cols[0].metric("Выручка", f"{rev:,.0f} ₽")
-    cols[1].metric("Прибыль", f"{net_profit:,.0f} ₽")
-    cols[2].metric("Заказы", f"{df['Заказы (из ленты в API)'].sum():,}")
-    cols[3].metric("Всего товаров", f"{len(df)}")
+    # Чистая прибыль
+    net_profit = rev - (promo + abs(acquiring) + abs(logistics) + abs(penalties) + abs(commission))
+    
+    # 2. Вывод ВСЕХ метрик
+    st.subheader("💰 Финансовые показатели")
+    cols1 = st.columns(4)
+    cols1[0].metric("Выручка", f"{rev:,.0f} ₽")
+    cols1[1].metric("Прибыль", f"{net_profit:,.0f} ₽")
+    cols1[2].metric("Логистика", f"{abs(logistics):,.0f} ₽")
+    cols1[3].metric("Продвижение", f"{abs(promo):,.0f} ₽")
+    
+    cols2 = st.columns(3)
+    cols2[0].metric("Эквайринг", f"{abs(acquiring):,.0f} ₽")
+    cols2[1].metric("Штрафы", f"{abs(penalties):,.0f} ₽")
+    cols2[2].metric("Комиссия", f"{abs(commission):,.0f} ₽")
 
-    # Аналитика: что показывать (Дату или Наименование товара)
-    st.markdown("### 📈 Анализ эффективности")
+    # 3. Анализ товаров
+    df['Чистая'] = df['Сумма заказов (из ленты в API)'] - (df['Продвижение'].abs() + df['Эквайринг'].abs() + df['Логистика'].abs() + df['Штрафы'].abs() + df['Комиссия'].abs())
+    
+    st.subheader("📦 Анализ товаров")
     col_a, col_b = st.columns(2)
-    
-    # Если есть Дата — берем её, если нет — берем Наименование
-    target_col = 'Дата' if 'Дата' in df.columns else 'Наименование'
-    
     best = df.loc[df['Чистая'].idxmax()]
     worst = df.loc[df['Чистая'].idxmin()]
     
-    col_a.metric(f"Лучший ({target_col})", f"{best[target_col]}", f"{best['Чистая']:,.0f} ₽")
-    col_b.metric(f"Худший ({target_col})", f"{worst[target_col]}", f"{worst['Чистая']:,.0f} ₽")
+    col_a.metric("Лучший товар", best['Наименование'][:20] + "...", f"{best['Чистая']:,.0f} ₽")
+    col_b.metric("Худший товар", worst['Наименование'][:20] + "...", f"{worst['Чистая']:,.0f} ₽")
 
     # ИИ
     st.markdown("---")
@@ -66,8 +71,5 @@ if file:
         query = st.text_input("🤖 Спросить ИИ:")
         if query:
             with st.spinner("Анализирую..."):
-                stats = f"Общая прибыль: {net_profit}, Лучший товар: {best['Наименование']}, Худший: {worst['Наименование']}"
-                resp = model.generate_content(f"Вопрос: {query}. Данные: {stats}")
+                resp = model.generate_content(f"Вопрос: {query}. Прибыль: {net_profit}, Лучший: {best['Наименование']}, Худший: {worst['Наименование']}")
                 st.write(resp.text)
-    else:
-        st.error("Ошибка ИИ: Проверьте API-ключ в Settings.")
