@@ -30,7 +30,7 @@ file = st.sidebar.file_uploader("Загрузите отчет", type=["xlsx"])
 if file:
     df = pd.read_excel(file)
     
-    # Расходы и возвраты
+    # Расходы
     expenses_cols = ['Комиссия', 'Эквайринг', 'Логистика', 'Хранение', 'Платная приемка', 'Продвижение', 'Штрафы', 'Себестоимость']
     
     # Считаем показатели
@@ -61,21 +61,21 @@ if file:
     best = df.loc[df['Чистая'].idxmax()]
     worst = df.loc[df['Чистая'].idxmin()]
     
-    # Данные для метрик
-    best_name = str(best.get('Наименование', 'Товар'))[:25] + "..."
-    best_sales_str = f"Продаж: {int(best.get('Заказы (из ленты в API)', 0))}"
+    # Подготовка данных (чистые строки)
+    best_name = str(best.get('Наименование', 'Товар'))[:20]
+    best_sales = int(best.get('Заказы (из ленты в API)', 0))
     
-    worst_name = str(worst.get('Наименование', 'Товар'))[:25] + "..."
-    worst_sales_str = f"Продаж: {int(worst.get('Заказы (из ленты в API)', 0))}"
+    worst_name = str(worst.get('Наименование', 'Товар'))[:20]
+    worst_sales = int(worst.get('Заказы (из ленты в API)', 0))
     
-    # Вывод метрик без цветных стрелок (delta=None)
+    # Вывод метрик (название в заголовке, продажи в значении)
     col_a, col_b = st.columns(2)
-    col_a.metric("Лучший товар", best_name, best_sales_str, delta=None)
-    col_b.metric("Лучший день", str(best.get('Дата', '—')), delta=None)
+    col_a.metric(f"Лучший: {best_name}", f"Продаж: {best_sales}")
+    col_b.metric("Лучший день", str(best.get('Дата', '—')))
     
     col_c, col_d = st.columns(2)
-    col_c.metric("Худший товар", worst_name, worst_sales_str, delta=None)
-    col_d.metric("Худший день", str(worst.get('Дата', '—')), delta=None)
+    col_c.metric(f"Худший: {worst_name}", f"Продаж: {worst_sales}")
+    col_d.metric("Худший день", str(worst.get('Дата', '—')))
 
     # ИИ
     st.markdown("---")
