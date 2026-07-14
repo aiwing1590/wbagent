@@ -183,8 +183,8 @@ if file:
                 # Добавляем список реальных колонок файла, чтобы ИИ знал структуру
                 ai_context += f"Доступные колонки в загруженном файле: {list(df.columns)}. "
                 
-                # Актуальный и быстрый пул моделей Google Gemini (без устаревшего 1.5)
-                models_to_try = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash']
+                # Только актуальные и активные модели (без устаревшего хлама)
+                models_to_try = ['gemini-2.0-flash', 'gemini-2.5-pro']
                 
                 resp_text = None
                 errors_log = []
