@@ -3,12 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 import re
-import google.generativeai as genai
+import sys
 
 app = FastAPI()
 
 # НАСТРОЙКА БЕЗОПАСНОСТИ (CORS)
-# Разрешаем сайту на Vercel общаться с бэкендом на Render
+# Позволяет твоему фронтенду на Vercel без ограничений забирать данные
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,9 +20,9 @@ app.add_middleware(
 # === ТВОЙ ПАРОЛЬ ДЛЯ ВХОДА ===
 SECRET_PASSWORD = "123"
 
-# СЛОВАРЬ СИНОНИМОВ СO ВЧЕРАШНЕГО ДНЯ
+# СЛОВАРЬ СИНОНИМОВ ДЛЯ УМНОГО КЛАССИФИКАТОРА КОЛОНОК
 keywords_map = {
-    'revenue': ['выручка', 'сумма реализации', 'сумма заказов', 'к оплате', 'цена продажи', 'вайлдберриз к оплате', 'переданный товар', 'сумма'],
+    'revenue': ['валовая выручка', 'выручка по заказам', 'выручка', 'сумма реализации', 'сумма заказов', 'к оплате', 'цена продажи', 'вайлдберриз к оплате', 'переданный товар', 'сумма'],
     'logistics': ['логистика', 'доставка', 'услуги по доставке'],
     'commission': ['комиссия', 'эквайринг', 'вознаграждение'],
     'cost': ['себестоимость'],
@@ -30,9 +30,9 @@ keywords_map = {
     'storage': ['хранение'],
     'acceptance': ['приемка', 'платная приемка'],
     'fines': ['штрафы', 'штраф'],
-    'returns_cnt': ['возвраты', 'кол-во возвратов'],
-    'returns_sum': ['сумма возвратов'],
-    'orders_cnt': ['заказы', 'кол-во заказов', 'количество заказов'],
+    'returns_cnt': ['возвраты', 'возвраты заказов', 'кол-во возвратов'],
+    'returns_sum': ['сумма возвратов', 'сумма отмен'],
+    'orders_cnt': ['заказы', 'кол-во заказов', 'количество заказов', 'заказы (из ленты в api)'],
     'product_name': ['наименование', 'товар', 'название товара', 'артикул', 'предмет', 'номенклатура', 'бренд', 'обоснование для оплаты'],
     'date': ['дата', 'день']
 }
@@ -42,7 +42,7 @@ def detect_column(df, key, exclude_words=None):
         exclude_words = []
     possible_synonyms = keywords_map[key]
     for col in df.columns:
-        col_lower = str(col).lower()
+        col_lower = str(col).lower().strip()
         if any(syn in col_lower for syn in possible_synonyms):
             if not any(ex in col_lower for ex in exclude_words):
                 return col
@@ -56,12 +56,16 @@ async def analyze_file(
 ):
     # 1. ПРОВЕРКА ПАРОЛЯ
     if app_password != SECRET_PASSWORD:
+        print("LOG: Ошибка авторизации. Неверный пароль.")
         return {"error": "Неверный пароль! Доступ запрещен."}
     
     try:
         # 2. ЧТЕНИЕ ФАЙЛА
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents))
+        
+        print("LOG: Файл успешно прочитан. Колонки в таблице:")
+        print(list(df.columns))
         
         # Автоопределение колонок по словарю синонимов
         found_cols = {}
@@ -71,8 +75,12 @@ async def analyze_file(
             else:
                 found_cols[key] = detect_column(df, key)
 
-        # 3. УМНЫЕ ВЫЧИСЛЕНИЯ ИЗ СТРИМЛИТА
+        print("LOG: Определенные колонки:")
+        print(found_cols)
+
+        # 3. ВЫЧИСЛЕНИЯ
         rev_col = found_cols['revenue']
+        # Если найдена колонка, берем сумму. Если нет, ставим 0.
         total_revenue = float(df[rev_col].fillna(0).sum()) if rev_col else 0.0
 
         discovered_expenses = {}
@@ -87,6 +95,8 @@ async def analyze_file(
         total_expenses_sum = sum(discovered_expenses.values())
         net_profit = total_revenue - total_expenses_sum
 
+        print(f"LOG: Выручка = {total_revenue}, Расходы = {total_expenses_sum}, Прибыль = {net_profit}")
+
         # Подсчет чистой прибыли по каждой строке
         df['Row_Net'] = df[rev_col].fillna(0) if rev_col else 0.0
         for k in expense_keys:
@@ -94,7 +104,7 @@ async def analyze_file(
             if c_name:
                 df['Row_Net'] = df['Row_Net'] - df[c_name].fillna(0).abs()
 
-        # Топ-товар по прибыли
+        # Топ-товар по чистой прибыли
         name_col = found_cols['product_name']
         best_product = "Не определен"
         if name_col:
@@ -102,7 +112,7 @@ async def analyze_file(
             if not product_grouped.empty:
                 best_product = str(product_grouped.idxmax())
 
-        # Дополнительная аналитика дней
+        # Определение лучшего дня
         date_col = found_cols['date']
         best_day_info = "Нет данных по датам"
         if date_col:
@@ -113,12 +123,13 @@ async def analyze_file(
                 best_day_profit = date_grouped[best_day]
                 best_day_info = f"{best_day} ({best_day_profit:,.0f} ₽)"
 
-        # 4. ОБРАБОТКА ИИ-ВОПРОСОВ (GEMINI / fallback-анализ)
+        # 4. ОБРАБОТКА ПОИСКОВЫХ ЗАПРОСОВ К ИИ
         ai_response = ""
         if user_query:
             q = user_query.lower().strip()
+            print(f"LOG: Получен вопрос от пользователя: '{user_query}'")
             
-            # Локальные быстрые ответы (как в твоем коде)
+            # Локальные быстрые ответы по формулам
             if "топ" in q or "top" in q or "лучш" in q:
                 if name_col:
                     product_grouped = df.groupby(name_col)['Row_Net'].sum()
@@ -168,7 +179,7 @@ async def analyze_file(
                     ai_response += "2. ✅ **Комиссия стабильна:** Процент удержания в норме.\n"
             
             else:
-                # Базовый текстовый поиск по названию
+                # Базовый текстовый поиск по названиям товаров
                 search_cols = [name_col] if name_col else []
                 for col in df.columns:
                     if df[col].dtype == 'object' and col not in search_cols:
@@ -198,7 +209,7 @@ async def analyze_file(
                 if not ai_response:
                     ai_response = "Задайте более точный вопрос (например, 'топ', 'аудит', 'доля логистики' или точное название товара)."
 
-        # 5. ОТПРАВЛЯЕМ МЕТРИКИ НА САЙТ
+        # 5. ОТПРАВЛЯЕМ ПОЛУЧЕННЫЕ РЕАЛЬНЫЕ МЕТРИКИ НА САЙТ
         return {
             "total_revenue": total_revenue,
             "net_profit": net_profit,
@@ -207,4 +218,5 @@ async def analyze_file(
         }
 
     except Exception as e:
+        print(f"LOG ERROR: Ошибка при обработке Excel: {str(e)}")
         return {"error": f"Ошибка при анализе Excel: {str(e)}"}
