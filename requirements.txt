@@ -1,5 +1,6 @@
+openai
+pandas
 fastapi
 uvicorn
 python-multipart
-pandas
 openpyxl
