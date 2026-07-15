@@ -14,7 +14,7 @@ app.add_middleware(
 )
 
 # Пароль для доступа
-SECRET_PASSWORD = "123"
+SECRET_PASSWORD = "Wb123prof"
 
 # Словарь синонимов для поиска колонок
 keywords_map = {
