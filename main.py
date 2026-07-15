@@ -16,7 +16,7 @@ app.add_middleware(
 
 SECRET_PASSWORD = "123"
 
-# Полный словарь колонок для анализа
+# Словарь синонимов
 keywords_map = {
     'revenue': ['валовая выручка', 'выручка по заказам', 'выручка', 'сумма реализации', 'сумма заказов'],
     'logistics': ['логистика', 'доставка'],
@@ -28,6 +28,17 @@ keywords_map = {
     'fines': ['штрафы', 'штраф'],
     'product_name': ['наименование', 'товар', 'артикул'],
     'date': ['дата', 'день']
+}
+
+# Словарь перевода для отображения на сайте
+ru_labels = {
+    'Logistics': 'Логистика',
+    'Commission': 'Комиссия',
+    'Cost': 'Себестоимость',
+    'Promo': 'Продвижение',
+    'Storage': 'Хранение',
+    'Acceptance': 'Приемка',
+    'Fines': 'Штрафы'
 }
 
 def detect_column(df, key):
@@ -44,29 +55,31 @@ async def analyze_file(file: UploadFile = File(...), app_password: str = Form(..
     
     try:
         df = pd.read_excel(io.BytesIO(await file.read()))
-        
         found_cols = {k: detect_column(df, k) for k in keywords_map}
         
         rev_val = float(df[found_cols['revenue']].sum()) if found_cols['revenue'] else 0.0
         
-        # Собираем все расходы
         expenses_data = {}
         total_exp = 0.0
+        # Проходим по ключам и сразу используем русский перевод
         for k in ['logistics', 'commission', 'cost', 'promo', 'storage', 'acceptance', 'fines']:
             col = found_cols[k]
+            label = ru_labels[k.capitalize()] # Берем перевод
             if col:
                 val = float(df[col].fillna(0).abs().sum())
-                expenses_data[k.capitalize()] = val
+                expenses_data[label] = val
                 total_exp += val
+            else:
+                expenses_data[label] = 0.0
         
         net_profit = rev_val - total_exp
 
         return {
             "total_revenue": rev_val,
             "net_profit": net_profit,
-            "expenses": expenses_data, # ТЕПЕРЬ ОТПРАВЛЯЕМ СПИСОК РАСХОДОВ
+            "expenses": expenses_data,
             "best_product": "Анализ завершен успешно",
-            "ai_response": "Отчет обработан. Детальная статистика по расходам доступна в таблице ниже."
+            "ai_response": "Все данные успешно проанализированы."
         }
     except Exception as e:
         return {"error": str(e)}
