@@ -2,6 +2,6 @@ fastapi
 uvicorn[standard]
 pandas
 openpyxl
+xlrd
 python-multipart
 openai
-pydantic-settings
