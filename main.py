@@ -5,7 +5,6 @@ import io
 
 app = FastAPI()
 
-# Настройки CORS (чтобы Vercel мог общаться с Render)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,40 +21,35 @@ async def analyze_file(
     app_password: str = Form(...),
     user_query: str = Form(None)
 ):
-    # Жесткая проверка пароля
     if app_password != SECRET_PASSWORD:
         return {"error": "Неверный пароль от бэкенда!"}
     
     try:
-        # Чтение файла
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents))
         
-        # Подсчет Выручки
-        rev = float(df['Валовая выручка'].sum())
-        
-        # Подсчет расходов (берем по модулю .abs(), чтобы не было проблем с минусами)
-        comm = float(df['Комиссия, эквайринг'].abs().sum())
-        log = float(df['Логистика'].abs().sum())
-        cost = float(df['Себестоимость'].abs().sum())
+        # Безопасное чтение: если колонки нет, ставим 0.0
+        rev = float(df['Валовая выручка'].sum()) if 'Валовая выручка' in df.columns else 0.0
+        comm = float(df['Комиссия, эквайринг'].abs().sum()) if 'Комиссия, эквайринг' in df.columns else 0.0
+        log = float(df['Логистика'].abs().sum()) if 'Логистика' in df.columns else 0.0
+        cost = float(df['Себестоимость'].abs().sum()) if 'Себестоимость' in df.columns else 0.0
         
         total_costs = comm + log + cost
         profit = rev - total_costs
         
-        expenses_dict = {
-            "Логистика": log,
-            "Комиссия": comm,
-            "Себестоимость": cost
-        }
+        # В словарь добавляем только те расходы, которые реально были найдены и посчитаны
+        expenses_dict = {}
+        if 'Логистика' in df.columns: expenses_dict["Логистика"] = log
+        if 'Комиссия, эквайринг' in df.columns: expenses_dict["Комиссия"] = comm
+        if 'Себестоимость' in df.columns: expenses_dict["Себестоимость"] = cost
         
-        # Логика ответов ИИ
         ai_ans = "Отчет успешно обработан. Задайте вопрос по данным."
         if user_query:
             q = user_query.lower()
             if "прибыл" in q or "аудит" in q:
                 ai_ans = f"Чистая прибыль по данному отчету составляет {profit:,.2f} ₽. Общая выручка: {rev:,.2f} ₽."
             elif "расход" in q or "логистик" in q or "себестоимост" in q:
-                ai_ans = f"Общая сумма расходов: {total_costs:,.2f} ₽. На логистику ушло {log:,.2f} ₽, а на закупку товара (себестоимость) {cost:,.2f} ₽."
+                ai_ans = f"Общая сумма расходов: {total_costs:,.2f} ₽. На логистику ушло {log:,.2f} ₽, а на закупку товара {cost:,.2f} ₽."
             elif "шутк" in q:
                 ai_ans = "Почему программисты не любят природу? Потому что там слишком много багов!"
             else:
