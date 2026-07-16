@@ -1,6 +1,7 @@
-openai
-pandas
 fastapi
-uvicorn
-python-multipart
+uvicorn[standard]
+pandas
 openpyxl
+python-multipart
+openai
+pydantic-settings
