@@ -4,6 +4,8 @@ import os
 from typing import Optional
 
 import pandas as pd
+import psycopg
+from psycopg.rows import dict_row
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
@@ -16,6 +18,7 @@ from openai import AsyncOpenAI
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 FRONTEND_ORIGIN = os.getenv(
     "FRONTEND_ORIGIN",
@@ -40,7 +43,7 @@ ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
 
 app = FastAPI(
     title="WB AI Agent API",
-    version="3.0.0",
+    version="4.0.0",
 )
 
 app.add_middleware(
@@ -414,6 +417,708 @@ def get_returns_series(
         index=df.index,
         dtype="float64",
     )
+
+
+# ============================================================
+# ПОСТОЯННАЯ БАЗА ТОВАРОВ
+# ============================================================
+
+def require_database() -> None:
+    if not DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="На сервере не настроена DATABASE_URL",
+        )
+
+
+def init_database() -> None:
+    if not DATABASE_URL:
+        print("ВНИМАНИЕ: DATABASE_URL не настроена")
+        return
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS products (
+                    wb_article BIGINT PRIMARY KEY,
+                    brand TEXT,
+                    subject TEXT,
+                    size_code TEXT,
+                    seller_article TEXT,
+                    size TEXT,
+                    barcode TEXT,
+                    volume DOUBLE PRECISION,
+                    composition TEXT,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS products_brand_idx
+                ON products (brand)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS products_subject_idx
+                ON products (subject)
+                """
+            )
+
+
+@app.on_event("startup")
+async def startup_database():
+    try:
+        init_database()
+    except Exception as error:
+        print(
+            "Ошибка подключения к PostgreSQL:",
+            type(error).__name__,
+            str(error),
+        )
+
+
+def clean_text_value(value) -> Optional[str]:
+    if pd.isna(value):
+        return None
+
+    text = str(value).strip()
+
+    if not text or text.lower() == "nan":
+        return None
+
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+
+    return text
+
+
+def dataframe_to_products(df: pd.DataFrame) -> list[tuple]:
+    required = {"Артикул WB", "Бренд", "Предмет"}
+    missing = sorted(required - set(df.columns))
+
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Это не файл ассортимента. "
+                "Не найдены колонки: " + ", ".join(missing)
+            ),
+        )
+
+    articles = pd.to_numeric(
+        df["Артикул WB"],
+        errors="coerce",
+    )
+
+    products = {}
+
+    for index, article_value in articles.items():
+        if pd.isna(article_value):
+            continue
+
+        article = int(article_value)
+
+        volume = None
+        if "Объем, л." in df.columns:
+            parsed_volume = pd.to_numeric(
+                pd.Series([df.at[index, "Объем, л."]]),
+                errors="coerce",
+            ).iloc[0]
+            if not pd.isna(parsed_volume):
+                volume = float(parsed_volume)
+
+        products[article] = (
+            article,
+            clean_text_value(df.at[index, "Бренд"]),
+            clean_text_value(df.at[index, "Предмет"]),
+            clean_text_value(df.at[index, "Код размера (chrt_id)"])
+            if "Код размера (chrt_id)" in df.columns
+            else None,
+            clean_text_value(df.at[index, "Артикул продавца"])
+            if "Артикул продавца" in df.columns
+            else None,
+            clean_text_value(df.at[index, "Размер"])
+            if "Размер" in df.columns
+            else None,
+            clean_text_value(df.at[index, "Баркод"])
+            if "Баркод" in df.columns
+            else None,
+            volume,
+            clean_text_value(df.at[index, "Состав"])
+            if "Состав" in df.columns
+            else None,
+        )
+
+    if not products:
+        raise HTTPException(
+            status_code=422,
+            detail="В ассортименте не найдено ни одного Артикула WB",
+        )
+
+    return list(products.values())
+
+
+def save_products(products: list[tuple]) -> dict:
+    require_database()
+    article_ids = [product[0] for product in products]
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT wb_article
+                FROM products
+                WHERE wb_article = ANY(%s)
+                """,
+                (article_ids,),
+            )
+            existing = {row[0] for row in cursor.fetchall()}
+
+            cursor.executemany(
+                """
+                INSERT INTO products (
+                    wb_article,
+                    brand,
+                    subject,
+                    size_code,
+                    seller_article,
+                    size,
+                    barcode,
+                    volume,
+                    composition,
+                    updated_at
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, NOW()
+                )
+                ON CONFLICT (wb_article)
+                DO UPDATE SET
+                    brand = EXCLUDED.brand,
+                    subject = EXCLUDED.subject,
+                    size_code = EXCLUDED.size_code,
+                    seller_article = EXCLUDED.seller_article,
+                    size = EXCLUDED.size,
+                    barcode = EXCLUDED.barcode,
+                    volume = EXCLUDED.volume,
+                    composition = EXCLUDED.composition,
+                    updated_at = NOW()
+                """,
+                products,
+            )
+
+            cursor.execute(
+                "SELECT COUNT(*) FROM products"
+            )
+            total = int(cursor.fetchone()[0])
+
+    added = len(set(article_ids) - existing)
+    updated = len(set(article_ids) & existing)
+
+    return {
+        "received": len(products),
+        "added": added,
+        "updated": updated,
+        "total": total,
+    }
+
+
+def get_products(
+    search: str = "",
+    limit: int = 100,
+) -> list[dict]:
+    require_database()
+    safe_limit = max(1, min(limit, 500))
+
+    sql = """
+        SELECT
+            wb_article,
+            brand,
+            subject,
+            seller_article,
+            barcode,
+            size,
+            volume,
+            updated_at
+        FROM products
+    """
+    parameters = []
+
+    if search:
+        sql += """
+            WHERE
+                CAST(wb_article AS TEXT) ILIKE %s
+                OR COALESCE(brand, '') ILIKE %s
+                OR COALESCE(subject, '') ILIKE %s
+                OR COALESCE(seller_article, '') ILIKE %s
+        """
+        pattern = f"%{search.strip()}%"
+        parameters.extend([pattern, pattern, pattern, pattern])
+
+    sql += " ORDER BY brand, subject, wb_article LIMIT %s"
+    parameters.append(safe_limit)
+
+    with psycopg.connect(
+        DATABASE_URL,
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, parameters)
+            rows = cursor.fetchall()
+
+    return [
+        {
+            **row,
+            "updated_at": (
+                row["updated_at"].isoformat()
+                if row.get("updated_at")
+                else None
+            ),
+        }
+        for row in rows
+    ]
+
+
+def get_product_stats() -> dict:
+    require_database()
+
+    with psycopg.connect(
+        DATABASE_URL,
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) AS products,
+                    COUNT(DISTINCT brand) AS brands,
+                    COUNT(DISTINCT subject) AS subjects,
+                    MAX(updated_at) AS updated_at
+                FROM products
+                """
+            )
+            row = cursor.fetchone()
+
+    return {
+        "products": int(row["products"] or 0),
+        "brands": int(row["brands"] or 0),
+        "subjects": int(row["subjects"] or 0),
+        "updated_at": (
+            row["updated_at"].isoformat()
+            if row["updated_at"]
+            else None
+        ),
+    }
+
+
+def enrich_with_products(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    if "Артикул WB" not in df.columns or not DATABASE_URL:
+        return df.copy(), {
+            "total_articles": 0,
+            "matched_articles": 0,
+            "missing_articles": 0,
+        }
+
+    result = df.copy()
+    article_keys = pd.to_numeric(
+        result["Артикул WB"],
+        errors="coerce",
+    )
+
+    unique_articles = sorted({
+        int(value)
+        for value in article_keys.dropna().tolist()
+    })
+
+    if not unique_articles:
+        return result, {
+            "total_articles": 0,
+            "matched_articles": 0,
+            "missing_articles": 0,
+        }
+
+    with psycopg.connect(
+        DATABASE_URL,
+        row_factory=dict_row,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT wb_article, brand, subject
+                FROM products
+                WHERE wb_article = ANY(%s)
+                """,
+                (unique_articles,),
+            )
+            rows = cursor.fetchall()
+
+    brand_map = {
+        int(row["wb_article"]): row["brand"]
+        for row in rows
+    }
+    subject_map = {
+        int(row["wb_article"]): row["subject"]
+        for row in rows
+    }
+
+    mapped_brands = article_keys.map(brand_map)
+    mapped_subjects = article_keys.map(subject_map)
+
+    if "Бренд" not in result.columns:
+        result["Бренд"] = mapped_brands
+    else:
+        empty_brand = (
+            result["Бренд"].isna()
+            | (result["Бренд"].astype(str).str.strip() == "")
+        )
+        result.loc[empty_brand, "Бренд"] = mapped_brands[empty_brand]
+
+    if "Предмет" not in result.columns:
+        result["Предмет"] = mapped_subjects
+    else:
+        empty_subject = (
+            result["Предмет"].isna()
+            | (result["Предмет"].astype(str).str.strip() == "")
+        )
+        result.loc[empty_subject, "Предмет"] = mapped_subjects[empty_subject]
+
+    matched = len(rows)
+
+    return result, {
+        "total_articles": len(unique_articles),
+        "matched_articles": matched,
+        "missing_articles": len(unique_articles) - matched,
+    }
+
+
+# ============================================================
+# АНАЛИТИКА СПП
+# ============================================================
+
+def serialize_spp_rows(df: pd.DataFrame) -> list[dict]:
+    records = []
+
+    for row in df.to_dict(orient="records"):
+        record = {}
+        for key, value in row.items():
+            if pd.isna(value):
+                record[key] = None
+            elif hasattr(value, "isoformat"):
+                record[key] = value.isoformat()
+            elif isinstance(value, (int, float)):
+                record[key] = round(float(value), 2)
+            else:
+                record[key] = str(value)
+        records.append(record)
+
+    return records
+
+
+def spp_group_dynamics(
+    working: pd.DataFrame,
+    group_columns: list[str],
+    limit: int = 50,
+    minimum_orders: int = 1,
+) -> list[dict]:
+    grouped = (
+        working
+        .groupby(group_columns + ["day"], dropna=False)
+        .agg(
+            orders=("spp", "size"),
+            avg_spp=("spp", "mean"),
+            min_spp=("spp", "min"),
+            max_spp=("spp", "max"),
+            avg_our_price=("our_price", "mean"),
+            avg_sale_price=("sale_price", "mean"),
+        )
+        .reset_index()
+    )
+
+    totals = (
+        working
+        .groupby(group_columns, dropna=False)
+        .agg(
+            total_orders=("spp", "size"),
+            avg_spp=("spp", "mean"),
+        )
+        .reset_index()
+    )
+
+    totals = totals[
+        totals["total_orders"] >= minimum_orders
+    ].sort_values(
+        "total_orders",
+        ascending=False,
+    ).head(limit)
+
+    allowed = {
+        tuple(row[column] for column in group_columns)
+        for row in totals.to_dict(orient="records")
+    }
+
+    result = []
+
+    for key, rows in grouped.groupby(group_columns, dropna=False):
+        key_tuple = key if isinstance(key, tuple) else (key,)
+        if key_tuple not in allowed:
+            continue
+
+        rows = rows.sort_values("day")
+        days = serialize_spp_rows(rows[[
+            "day",
+            "orders",
+            "avg_spp",
+            "min_spp",
+            "max_spp",
+            "avg_our_price",
+            "avg_sale_price",
+        ]])
+
+        first = rows.iloc[0]
+        last = rows.iloc[-1]
+        previous = (
+            rows.iloc[-2]
+            if len(rows) > 1
+            else first
+        )
+
+        item = {
+            column: (
+                "Не указано"
+                if pd.isna(value)
+                else str(value)
+            )
+            for column, value in zip(
+                group_columns,
+                key_tuple,
+            )
+        }
+        item.update({
+            "total_orders": int(rows["orders"].sum()),
+            "avg_spp": round(
+                float(
+                    (
+                        rows["avg_spp"]
+                        * rows["orders"]
+                    ).sum()
+                    / rows["orders"].sum()
+                ),
+                2,
+            ),
+            "spp_change": round(
+                float(last["avg_spp"] - previous["avg_spp"]),
+                2,
+            ),
+            "orders_change": int(
+                last["orders"] - previous["orders"]
+            ),
+            "period_spp_change": round(
+                float(last["avg_spp"] - first["avg_spp"]),
+                2,
+            ),
+            "period_orders_change": int(
+                last["orders"] - first["orders"]
+            ),
+            "days": days,
+        })
+        result.append(item)
+
+    return sorted(
+        result,
+        key=lambda item: item["total_orders"],
+        reverse=True,
+    )
+
+
+def build_spp_analysis(
+    df: pd.DataFrame,
+    match_stats: dict,
+) -> dict:
+    required = {
+        "Дата заказа",
+        "Артикул WB",
+        "СПП",
+        "Склад",
+        "Регион",
+    }
+    missing = sorted(required - set(df.columns))
+
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Это не СПП-отчёт. "
+                "Не найдены колонки: " + ", ".join(missing)
+            ),
+        )
+
+    order_dates = pd.to_datetime(
+        df["Дата заказа"],
+        errors="coerce",
+    )
+    spp = safe_numeric_column(df, "СПП")
+
+    working = pd.DataFrame({
+        "datetime": order_dates,
+        "spp": spp,
+        "wb_article": pd.to_numeric(
+            df["Артикул WB"],
+            errors="coerce",
+        ),
+        "product": (
+            df["Наименование"].fillna("Без названия").astype(str)
+            if "Наименование" in df.columns
+            else df["Артикул WB"].astype(str)
+        ),
+        "brand": (
+            df["Бренд"].fillna("Не найден в ТОВАРАХ").astype(str)
+            if "Бренд" in df.columns
+            else "Не найден в ТОВАРАХ"
+        ),
+        "subject": (
+            df["Предмет"].fillna("Не найден в ТОВАРАХ").astype(str)
+            if "Предмет" in df.columns
+            else "Не найден в ТОВАРАХ"
+        ),
+        "warehouse": df["Склад"].fillna("Не указано").astype(str),
+        "region": df["Регион"].fillna("Не указано").astype(str),
+        "our_price": safe_numeric_column(df, "Цена со скидкой"),
+        "sale_price": safe_numeric_column(df, "Цена продажи"),
+    })
+
+    working = working.dropna(
+        subset=["datetime", "wb_article"]
+    )
+
+    if working.empty:
+        raise HTTPException(
+            status_code=422,
+            detail="В СПП-отчёте нет корректных строк",
+        )
+
+    working["day"] = working["datetime"].dt.date
+    working["hour"] = working["datetime"].dt.hour
+
+    daily = (
+        working
+        .groupby("day")
+        .agg(
+            orders=("spp", "size"),
+            avg_spp=("spp", "mean"),
+            median_spp=("spp", "median"),
+            min_spp=("spp", "min"),
+            max_spp=("spp", "max"),
+            avg_our_price=("our_price", "mean"),
+            avg_sale_price=("sale_price", "mean"),
+        )
+        .reset_index()
+        .sort_values("day")
+    )
+    daily["spp_change"] = daily["avg_spp"].diff()
+    daily["orders_change"] = daily["orders"].diff()
+    daily["orders_change_percent"] = (
+        daily["orders"].pct_change() * 100
+    )
+
+    hourly = (
+        working
+        .groupby(["day", "hour"])
+        .agg(
+            orders=("spp", "size"),
+            avg_spp=("spp", "mean"),
+            min_spp=("spp", "min"),
+            max_spp=("spp", "max"),
+        )
+        .reset_index()
+        .sort_values(["day", "hour"])
+    )
+
+    brands = spp_group_dynamics(
+        working,
+        ["brand"],
+        limit=50,
+        minimum_orders=3,
+    )
+    subjects = spp_group_dynamics(
+        working,
+        ["subject"],
+        limit=50,
+        minimum_orders=3,
+    )
+    products = spp_group_dynamics(
+        working,
+        ["product", "wb_article"],
+        limit=100,
+        minimum_orders=3,
+    )
+    links = spp_group_dynamics(
+        working,
+        ["subject", "warehouse", "region"],
+        limit=150,
+        minimum_orders=5,
+    )
+
+    alerts = [
+        item
+        for item in links
+        if (
+            item["spp_change"] <= -1
+            and item["orders_change"] < 0
+        )
+    ]
+    alerts.sort(
+        key=lambda item: (
+            item["spp_change"],
+            item["orders_change"],
+        )
+    )
+
+    first_day = daily.iloc[0]
+    last_day = daily.iloc[-1]
+
+    return {
+        "report_type": "spp",
+        "period": {
+            "from": first_day["day"].isoformat(),
+            "to": last_day["day"].isoformat(),
+            "days": int(len(daily)),
+        },
+        "summary": {
+            "orders": int(len(working)),
+            "avg_spp": round(float(working["spp"].mean()), 2),
+            "min_spp": round(float(working["spp"].min()), 2),
+            "max_spp": round(float(working["spp"].max()), 2),
+            "spp_change": round(
+                float(last_day["avg_spp"] - first_day["avg_spp"]),
+                2,
+            ),
+            "orders_change": int(
+                last_day["orders"] - first_day["orders"]
+            ),
+            "orders_change_percent": round(
+                float(
+                    (
+                        last_day["orders"]
+                        / first_day["orders"]
+                        - 1
+                    )
+                    * 100
+                ),
+                2,
+            ) if first_day["orders"] else None,
+        },
+        "product_matching": match_stats,
+        "daily": serialize_spp_rows(daily),
+        "hourly": serialize_spp_rows(hourly),
+        "brands": brands,
+        "subjects": subjects,
+        "products": products,
+        "links": links,
+        "alerts": alerts[:30],
+    }
 
 
 # ============================================================
@@ -1003,6 +1708,7 @@ async def health():
             APP_PASSWORD
         ),
         "model": OPENAI_MODEL,
+        "database_configured": bool(DATABASE_URL),
     }
 
 
@@ -1015,6 +1721,67 @@ async def login(
     return {
         "success": True,
         "message": "Пароль принят",
+    }
+
+
+@app.post("/products/upload")
+async def upload_products(
+    file: UploadFile = File(...),
+    app_password: str = Form(...),
+):
+    check_password(app_password)
+    df = await read_excel_file(file)
+    products = dataframe_to_products(df)
+    result = save_products(products)
+
+    return {
+        "success": True,
+        **result,
+    }
+
+
+@app.post("/products/list")
+async def list_products(
+    app_password: str = Form(...),
+    search: str = Form(""),
+    limit: int = Form(100),
+):
+    check_password(app_password)
+
+    return {
+        "stats": get_product_stats(),
+        "products": get_products(search, limit),
+    }
+
+
+@app.post("/spp/analyze")
+async def analyze_spp(
+    file: UploadFile = File(...),
+    app_password: str = Form(...),
+    user_query: Optional[str] = Form(None),
+):
+    check_password(app_password)
+    df = await read_excel_file(file)
+    enriched_df, match_stats = enrich_with_products(df)
+    analysis = build_spp_analysis(
+        enriched_df,
+        match_stats,
+    )
+
+    ai_response = (
+        "СПП-отчёт обработан. "
+        "Задайте вопрос ИИ-аналитику."
+    )
+
+    if user_query and user_query.strip():
+        ai_response = await ask_openai(
+            user_query.strip(),
+            {"spp_analysis": analysis},
+        )
+
+    return {
+        "analysis": analysis,
+        "ai_response": ai_response,
     }
 
 
@@ -1042,6 +1809,7 @@ async def analyze_file(
         )
 
     df = await read_excel_file(file)
+    df, _ = enrich_with_products(df)
     metrics = build_metrics(df)
 
     ai_response = (
