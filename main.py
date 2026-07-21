@@ -2807,6 +2807,55 @@ async def upload_products(
     }
 
 
+def upload_error(error: Exception) -> dict:
+    """Безопасное описание ошибки одного файла внутри массовой загрузки."""
+    if isinstance(error, HTTPException):
+        detail = error.detail
+        if isinstance(detail, dict):
+            return {
+                "message": detail.get("message") or str(detail),
+                "code": detail.get("code"),
+            }
+        return {"message": str(detail), "code": None}
+    print("Ошибка массовой загрузки:", type(error).__name__, str(error))
+    return {"message": "Не удалось обработать файл", "code": None}
+
+
+@app.post("/products/upload-batch")
+async def upload_products_batch(
+    files: list[UploadFile] = File(...),
+    session_token: str = Form(...),
+):
+    owner_login = get_current_user(session_token)
+    if not files:
+        raise HTTPException(status_code=400, detail="Выберите хотя бы один файл")
+
+    results = []
+    totals = {"added": 0, "updated": 0, "received": 0}
+    for file in files:
+        try:
+            df = await read_excel_file(file)
+            products = dataframe_to_products(df)
+            saved = save_products(owner_login, products)
+            for key in totals:
+                totals[key] += int(saved.get(key, 0))
+            results.append({"filename": file.filename, "status": "accepted", **saved})
+            log_event(owner_login, "products_uploaded", {
+                "filename": file.filename, "batch": True,
+                "added": saved.get("added", 0), "updated": saved.get("updated", 0),
+            })
+        except Exception as error:
+            results.append({"filename": file.filename, "status": "rejected", **upload_error(error)})
+
+    stats = get_product_stats(owner_login)
+    return {
+        "success": any(item["status"] == "accepted" for item in results),
+        "accepted": sum(item["status"] == "accepted" for item in results),
+        "rejected": sum(item["status"] == "rejected" for item in results),
+        "results": results, "total": stats["products"], **totals,
+    }
+
+
 @app.post("/products/list")
 async def list_products(
     session_token: str = Form(...),
@@ -2878,6 +2927,53 @@ async def analyze_spp(
         "analysis": analysis,
         "storage": storage,
         "ai_response": ai_response,
+    }
+
+
+@app.post("/spp/analyze-batch")
+async def analyze_spp_batch(
+    files: list[UploadFile] = File(...),
+    session_token: str = Form(...),
+    date_from: Optional[str] = Form(None),
+    date_to: Optional[str] = Form(None),
+):
+    owner_login = get_current_user(session_token)
+    if not files:
+        raise HTTPException(status_code=400, detail="Выберите хотя бы один файл")
+
+    results, accepted_ranges = [], []
+    for file in files:
+        try:
+            df = await read_excel_file(file)
+            enriched_df, match_stats = validate_and_enrich_report(owner_login, df)
+            storage = save_spp_orders(owner_login, enriched_df, file.filename or "СПП-отчёт.xlsx")
+            accepted_ranges.append(storage)
+            results.append({
+                "filename": file.filename, "status": "accepted",
+                "saved_rows": storage["saved_rows"], "date_from": storage["date_from"],
+                "date_to": storage["date_to"], "matching": match_stats,
+            })
+            log_event(owner_login, "spp_uploaded", {
+                "filename": file.filename, "batch": True, "saved_rows": storage["saved_rows"],
+                "date_from": storage["date_from"], "date_to": storage["date_to"],
+            })
+        except Exception as error:
+            results.append({"filename": file.filename, "status": "rejected", **upload_error(error)})
+
+    if not accepted_ranges:
+        return {"success": False, "accepted": 0, "rejected": len(results), "results": results}
+
+    selected_from = date_from or min(item["date_from"] for item in accepted_ranges)
+    selected_to = date_to or max(item["date_to"] for item in accepted_ranges)
+    stored_df, stored_match_stats = load_spp_orders(owner_login, selected_from, selected_to)
+    analysis = build_spp_analysis(stored_df, stored_match_stats, None, None)
+    report_id = save_spp_report(
+        owner_login, f"Массовая загрузка: {len(accepted_ranges)} файлов", analysis,
+    )
+    return {
+        "success": True, "report_id": report_id, "analysis": analysis,
+        "accepted": len(accepted_ranges), "rejected": len(results) - len(accepted_ranges),
+        "results": results,
     }
 
 
@@ -3134,4 +3230,48 @@ async def analyze_file(
         **metrics,
         "report_id": report_id,
         "ai_response": ai_response,
+    }
+
+
+@app.post("/analyze-batch")
+async def analyze_files_batch(
+    files: list[UploadFile] = File(...),
+    session_token: str = Form(...),
+):
+    owner_login = get_current_user(session_token)
+    if not files:
+        raise HTTPException(status_code=400, detail="Выберите хотя бы один файл")
+
+    results, latest_analysis = [], None
+    for file in files:
+        try:
+            df = await read_excel_file(file)
+            spp_signature = {"Дата заказа", "Артикул WB", "СПП", "Склад", "Регион"}
+            finance_signature = {"Валовая выручка", "Чистая прибыль", "Сумма реализации"}
+            if spp_signature.issubset(df.columns) and not (finance_signature & set(df.columns)):
+                raise HTTPException(status_code=422, detail={
+                    "code": "spp_report", "message": "Это СПП-отчёт, загрузите его в разделе СПП",
+                })
+            df, match_stats = validate_and_enrich_report(owner_login, df)
+            metrics = build_metrics(df)
+            metrics["product_matching"] = match_stats
+            report_id = save_finance_report(owner_login, file.filename or "Финансовый отчёт.xlsx", metrics)
+            latest_analysis = {**metrics, "report_id": report_id}
+            results.append({
+                "filename": file.filename, "status": "accepted", "report_id": report_id,
+                "rows": metrics.get("rows_count", 0), "revenue": metrics.get("total_revenue", 0),
+                "matching": match_stats,
+            })
+            log_event(owner_login, "finance_uploaded", {
+                "filename": file.filename, "batch": True, "rows": metrics.get("rows_count", 0),
+                "revenue": metrics.get("total_revenue", 0),
+            })
+        except Exception as error:
+            results.append({"filename": file.filename, "status": "rejected", **upload_error(error)})
+
+    return {
+        "success": latest_analysis is not None,
+        "accepted": sum(item["status"] == "accepted" for item in results),
+        "rejected": sum(item["status"] == "rejected" for item in results),
+        "results": results, "analysis": latest_analysis,
     }
