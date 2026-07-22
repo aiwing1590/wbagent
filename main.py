@@ -1386,6 +1386,7 @@ def compare_spp_periods(owner_login: str, first_from: str, first_to: str,
         "orders": metric_delta(first["summary"]["orders"], second["summary"]["orders"]),
         "revenue": metric_delta(first["summary"]["revenue"], second["summary"]["revenue"]),
         "avg_spp": metric_delta(first["summary"]["avg_spp"], second["summary"]["avg_spp"]),
+        "weighted_spp": metric_delta(first["summary"]["weighted_spp"], second["summary"]["weighted_spp"]),
     }
 
     def indexed(rows: list[dict], key: str) -> dict:
@@ -1400,19 +1401,42 @@ def compare_spp_periods(owner_login: str, first_from: str, first_to: str,
             previous_row = previous_index.get(name, {})
             result.append({
                 "name": name,
+                "wb_article": current_row.get("wb_article") or previous_row.get("wb_article"),
                 "orders": metric_delta(current_row.get("total_orders"), previous_row.get("total_orders")),
                 "revenue": metric_delta(current_row.get("revenue"), previous_row.get("revenue")),
                 "avg_spp": metric_delta(current_row.get("avg_spp"), previous_row.get("avg_spp")),
+                "weighted_spp": metric_delta(current_row.get("weighted_spp"), previous_row.get("weighted_spp")),
             })
-        result.sort(key=lambda row: abs(row["revenue"]["change"]), reverse=True)
+        result.sort(key=lambda row: abs(row["avg_spp"]["change"]) * max(row["revenue"]["current"], row["revenue"]["previous"], 1), reverse=True)
         return result[:100]
+
+    products = compare_rows(first.get("products", []), second.get("products", []), "wb_article")
+    brands = compare_rows(first.get("brands", []), second.get("brands", []), "brand")
+    links = compare_rows(first.get("links", []), second.get("links", []), "warehouse")
+    total_revenue = max(first["summary"]["revenue"], second["summary"]["revenue"], 1)
+    drivers = []
+    for row in products:
+        delta = row["weighted_spp"]["change"]
+        turnover = max(row["revenue"]["current"], row["revenue"]["previous"])
+        if turnover > 0 and abs(delta) > 0:
+            drivers.append({
+                "name": row["name"], "wb_article": row.get("wb_article"),
+                "weighted_spp_change": delta,
+                "avg_spp_change": row["avg_spp"]["change"],
+                "revenue": turnover,
+                "orders_change": row["orders"]["change"],
+                "impact": round(abs(delta) * turnover / total_revenue, 3),
+            })
+    drivers.sort(key=lambda row: row["impact"], reverse=True)
 
     return {
         "first_period": {**first["period"], "summary": first["summary"]},
         "second_period": {**second["period"], "summary": second["summary"]},
         "metrics": metrics,
-        "brands": compare_rows(first.get("brands", []), second.get("brands", []), "brand"),
-        "products": compare_rows(first.get("products", []), second.get("products", []), "product"),
+        "brands": brands,
+        "products": products,
+        "links": links,
+        "drivers": drivers[:8],
     }
 
 
@@ -1508,6 +1532,16 @@ def serialize_spp_rows(df: pd.DataFrame) -> list[dict]:
     return records
 
 
+def weighted_spp(frame: pd.DataFrame) -> float:
+    """СПП с весом по выручке: крупный заказ влияет сильнее малого."""
+    revenue = pd.to_numeric(frame["our_price"], errors="coerce").fillna(0)
+    spp = pd.to_numeric(frame["spp"], errors="coerce").fillna(0)
+    total_revenue = float(revenue.sum())
+    if total_revenue <= 0:
+        return float(spp.mean()) if len(spp) else 0.0
+    return float((spp * revenue).sum() / total_revenue)
+
+
 def spp_group_dynamics(
     working: pd.DataFrame,
     group_columns: list[str],
@@ -1539,6 +1573,14 @@ def spp_group_dynamics(
         )
         .reset_index()
     )
+
+    weighted_totals = (
+        working.groupby(group_columns, dropna=False)
+        .apply(weighted_spp, include_groups=False)
+        .rename("weighted_spp")
+        .reset_index()
+    )
+    totals = totals.merge(weighted_totals, on=group_columns, how="left")
 
     totals = totals[
         totals["total_orders"] >= minimum_orders
@@ -1603,6 +1645,12 @@ def spp_group_dynamics(
                 ),
                 2,
             ),
+            "weighted_spp": round(float(
+                totals.loc[
+                    (totals[group_columns] == pd.Series(key_tuple, index=group_columns)).all(axis=1),
+                    "weighted_spp",
+                ].iloc[0]
+            ), 2),
             "spp_change": round(
                 float(last["avg_spp"] - previous["avg_spp"]),
                 2,
@@ -1737,6 +1785,13 @@ def build_spp_analysis(
         .reset_index()
         .sort_values("day")
     )
+    daily_weighted = (
+        working.groupby("day", dropna=False)
+        .apply(weighted_spp, include_groups=False)
+        .rename("weighted_spp")
+        .reset_index()
+    )
+    daily = daily.merge(daily_weighted, on="day", how="left")
     daily["spp_change"] = daily["avg_spp"].diff()
     daily["orders_change"] = daily["orders"].diff()
     daily["orders_change_percent"] = (
@@ -1807,6 +1862,7 @@ def build_spp_analysis(
             "orders": int(len(working)),
             "revenue": round(float(working["our_price"].sum()), 2),
             "avg_spp": round(float(working["spp"].mean()), 2),
+            "weighted_spp": round(weighted_spp(working), 2),
             "min_spp": round(float(working["spp"].min()), 2),
             "max_spp": round(float(working["spp"].max()), 2),
             "spp_change": round(
@@ -2732,9 +2788,12 @@ async def read_excel_file(
 # API
 # ============================================================
 
-@app.api_route("/", methods=["GET", "HEAD"])
-def root():
-    return {"status": "ok"}
+@app.get("/")
+async def root():
+    return {
+        "status": "ok",
+        "message": "WB AI Agent API работает",
+    }
 
 
 @app.get("/health")
