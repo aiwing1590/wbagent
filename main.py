@@ -1408,8 +1408,8 @@ def compare_spp_periods(owner_login: str, first_from: str, first_to: str,
         return result[:100]
 
     return {
-        "first_period": first["period"],
-        "second_period": second["period"],
+        "first_period": {**first["period"], "summary": first["summary"]},
+        "second_period": {**second["period"], "summary": second["summary"]},
         "metrics": metrics,
         "brands": compare_rows(first.get("brands", []), second.get("brands", []), "brand"),
         "products": compare_rows(first.get("products", []), second.get("products", []), "product"),
