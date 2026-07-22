@@ -2732,12 +2732,9 @@ async def read_excel_file(
 # API
 # ============================================================
 
-@app.get("/")
-async def root():
-    return {
-        "status": "ok",
-        "message": "WB AI Agent API работает",
-    }
+@app.api_route("/", methods=["GET", "HEAD"])
+def root():
+    return {"status": "ok"}
 
 
 @app.get("/health")
